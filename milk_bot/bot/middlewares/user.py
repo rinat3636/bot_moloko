@@ -28,8 +28,7 @@ class UserMiddleware(BaseMiddleware):
         if from_user is None:
             return await handler(event, data)
 
-        res = await session.execute(select(User).where(User.id == from_user.id))
-        user = res.scalar_one_or_none()
+        user = await session.scalar(select(User).where(User.id == from_user.id))
         if user is None:
             user = User(
                 id=from_user.id,

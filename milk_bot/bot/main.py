@@ -54,11 +54,11 @@ async def main() -> None:
     async def on_error(event: ErrorEvent) -> None:
         logger.exception("Unhandled error: {}", event.exception)
         admins = settings.admin_id_list()
-        if admins and event.update.message:
+        if admins:
             try:
                 await bot.send_message(
                     admins[0],
-                    f"⚠️ Критическая ошибка бота:\n<code>{event.exception}</code>",
+                    f"⚠️ Ошибка бота:\n<code>{event.exception}</code>",
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to alert admin: {}", exc)

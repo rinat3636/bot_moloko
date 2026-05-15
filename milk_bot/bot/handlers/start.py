@@ -1,4 +1,4 @@
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 
@@ -13,4 +13,22 @@ async def cmd_start(message: Message) -> None:
         "Здравствуйте! Доставка молочной продукции до двери.\n"
         "Выберите раздел в меню ниже.",
         reply_markup=main_menu_keyboard(),
+    )
+
+
+@router.message(F.text == "ℹ️ О доставке")
+async def about_delivery(message: Message) -> None:
+    await message.answer(
+        "Доставка молочной продукции по Москве (MVP — одно ТСЖ).\n"
+        "Интервалы и дата выбираются при оформлении заказа.\n"
+        "Оплата на MVP — наличными при получении.\n"
+        "Минимальная сумма заказа задаётся администратором в настройках.",
+    )
+
+
+@router.message(F.text == "📞 Контакты")
+async def contacts(message: Message) -> None:
+    await message.answer(
+        "Связь с администратором — через этого бота после оформления заказа.\n"
+        "Телефон для связи уточняйте у управляющей компании вашего ТСЖ.",
     )
