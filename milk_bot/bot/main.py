@@ -1,0 +1,73 @@
+from __future__ import annotations
+
+import asyncio
+import sys
+from pathlib import Path
+
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import ErrorEvent
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from loguru import logger
+
+from milk_bot.bot.config import get_settings
+from milk_bot.bot.handlers import setup_routers
+from milk_bot.bot.middlewares.db import DbSessionMiddleware
+from milk_bot.bot.middlewares.user import UserMiddleware
+
+
+def configure_logging() -> None:
+    settings = get_settings()
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    logger.remove()
+    logger.add(sys.stderr, level=settings.log_level)
+    logger.add(
+        log_dir / "milk_bot_{time:YYYY-MM-DD}.log",
+        rotation="1 day",
+        retention="14 days",
+        level=settings.log_level,
+        encoding="utf-8",
+    )
+
+
+async def main() -> None:
+    settings = get_settings()
+    configure_logging()
+    bot = Bot(
+        settings.bot_token,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+    dp = Dispatcher(storage=MemoryStorage())
+
+    dp.update.outer_middleware(DbSessionMiddleware())
+    dp.update.outer_middleware(UserMiddleware())
+
+    dp.include_router(setup_routers())
+
+    scheduler = AsyncIOScheduler(timezone=settings.timezone)
+    scheduler.start()
+
+    @dp.errors()
+    async def on_error(event: ErrorEvent) -> None:
+        logger.exception("Unhandled error: {}", event.exception)
+        admins = settings.admin_id_list()
+        if admins and event.update.message:
+            try:
+                await bot.send_message(
+                    admins[0],
+                    f"⚠️ Критическая ошибка бота:\n<code>{event.exception}</code>",
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to alert admin: {}", exc)
+
+    try:
+        await dp.start_polling(bot)
+    finally:
+        scheduler.shutdown(wait=False)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
