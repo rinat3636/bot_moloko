@@ -1,0 +1,16 @@
+[Unit]
+Description=Milk delivery Telegram bot
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/milk_bot
+Environment=PYTHONPATH=/opt/milk_bot
+EnvironmentFile=/opt/milk_bot/.env
+ExecStart=/opt/milk_bot/.venv/bin/python -m milk_bot.bot.main
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
