@@ -74,7 +74,7 @@ class Settings(BaseSettings):
 
 
 def parse_admin_ids(raw: str) -> List[int]:
-    text = (raw or "").strip()
+    text = (raw or "").strip().strip("\ufeff").strip('"').strip("'")
     if not text:
         return []
     # Одно число без запятых, либо список через , ; перенос строки
