@@ -37,8 +37,11 @@ def configure_logging() -> None:
 async def main() -> None:
     settings = get_settings()
     configure_logging()
-    if not settings.admin_id_list():
-        logger.warning("ADMIN_IDS is empty — команда /admin недоступна")
+    admin_count = len(settings.admin_id_list())
+    if admin_count:
+        logger.info("ADMIN_IDS loaded: {} admin(s)", admin_count)
+    else:
+        logger.warning("ADMIN_IDS is empty or invalid — /admin will not open")
     bot = Bot(
         settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),

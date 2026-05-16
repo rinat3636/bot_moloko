@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import List
 
+from loguru import logger
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -44,14 +45,19 @@ class Settings(BaseSettings):
         return str(v).lower() in {"1", "true", "yes", "on"}
 
     def admin_id_list(self) -> List[int]:
-        if not self.admin_ids.strip():
+        raw = (self.admin_ids or "").strip()
+        if not raw:
             return []
+        normalized = raw.replace(";", ",").replace("\n", ",")
         out: List[int] = []
-        for part in self.admin_ids.split(","):
-            part = part.strip()
-            if not part:
+        for part in normalized.split(","):
+            token = part.strip().strip('"').strip("'")
+            if not token:
                 continue
-            out.append(int(part))
+            try:
+                out.append(int(token))
+            except ValueError:
+                logger.warning("ADMIN_IDS: пропущено значение {!r} (нужен числовой Telegram ID)", token)
         return out
 
     def delivery_slot_list(self) -> List[str]:
