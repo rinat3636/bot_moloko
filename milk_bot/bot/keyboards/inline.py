@@ -122,7 +122,7 @@ def confirm_order_keyboard() -> InlineKeyboardMarkup:
 def admin_main_keyboard() -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.add(InlineKeyboardButton(text="📦 Заказы", callback_data="ad:or"))
-    b.add(InlineKeyboardButton(text="🥛 Каталог", callback_data="ad:ct"))
+    b.add(InlineKeyboardButton(text="💰 Цены", callback_data="ad:ct"))
     b.add(InlineKeyboardButton(text="📊 Статистика", callback_data="ad:st"))
     b.add(InlineKeyboardButton(text="📢 Рассылка", callback_data="ad:bc"))
     b.adjust(2)

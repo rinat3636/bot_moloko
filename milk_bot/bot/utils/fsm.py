@@ -29,6 +29,6 @@ def is_checkout_state(state_str: str | None) -> bool:
 def is_admin_fsm_state(state_str: str | None) -> bool:
     if not state_str:
         return False
-    return state_str.startswith("AdminCategoryStates:") or state_str.startswith(
-        "AdminProductStates:"
-    ) or state_str.startswith("AdminBroadcastStates:")
+    return state_str.startswith("AdminProductStates:") or state_str.startswith(
+        "AdminBroadcastStates:"
+    )

@@ -56,6 +56,38 @@ async def main() -> None:
     dp.include_router(setup_routers())
 
     scheduler = AsyncIOScheduler(timezone=settings.timezone)
+
+    if settings.catalog_import_enabled:
+
+        async def daily_catalog_import() -> None:
+            from milk_bot.bot.services.catalog_import import run_catalog_import
+
+            try:
+                result = await run_catalog_import(if_empty=False)
+                if result:
+                    logger.info(
+                        "Daily catalog sync: +{} new, {} updated, {} hidden",
+                        result.inserted,
+                        result.updated,
+                        result.deactivated,
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Daily catalog import failed: {}", exc)
+
+        scheduler.add_job(
+            daily_catalog_import,
+            trigger="cron",
+            hour=settings.catalog_import_hour,
+            minute=0,
+            id="catalog_import_daily",
+            replace_existing=True,
+        )
+        logger.info(
+            "Catalog auto-sync from n-i.ru scheduled daily at {:02d}:00 ({})",
+            settings.catalog_import_hour,
+            settings.timezone,
+        )
+
     scheduler.start()
 
     @dp.errors()

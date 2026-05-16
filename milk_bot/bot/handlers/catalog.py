@@ -19,6 +19,7 @@ from milk_bot.bot.states.catalog import ProductQtyStates
 from milk_bot.bot.utils.catalog_labels import format_category_products_message
 from milk_bot.bot.utils.catalog_ui import show_product_card
 from milk_bot.bot.utils.formatters import format_money
+from milk_bot.bot.utils.product_display import format_product_card_caption
 
 router = Router()
 PAGE_SIZE = 7
@@ -109,13 +110,7 @@ async def cb_view_product(cq: CallbackQuery, session: AsyncSession, state: FSMCo
     await cq.answer()
     await state.set_state(ProductQtyStates.picking)
     await state.update_data(pid=pid, qty=1, cid=cid, page=page)
-    desc = html.escape(p.description or "")
-    name = html.escape(p.name)
-    text = (
-        f"<b>{name}</b>\n{desc}\n\n"
-        f"Цена: {format_money(p.price)}\n"
-        f"Количество: <b>1</b>"
-    )
+    text = format_product_card_caption(p, 1)
     kb = product_qty_keyboard(pid, 1)
     await show_product_card(cq, text=text, reply_markup=kb, product=p, session=session)
 
@@ -149,13 +144,7 @@ async def _refresh_product_card(
     p = await catalog_service.get_product(session, pid)
     if not p:
         return
-    desc = html.escape(p.description or "")
-    name = html.escape(p.name)
-    text = (
-        f"<b>{name}</b>\n{desc}\n\n"
-        f"Цена: {format_money(p.price)}\n"
-        f"Количество: <b>{qty}</b>"
-    )
+    text = format_product_card_caption(p, qty)
     kb = product_qty_keyboard(pid, qty)
     await show_product_card(cq, text=text, reply_markup=kb, product=p, session=session)
 

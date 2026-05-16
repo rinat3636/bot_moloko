@@ -36,8 +36,10 @@ class Settings(BaseSettings):
     cancel_deadline_hours: int = Field(default=3, alias="CANCEL_DEADLINE_HOURS")
     timezone: str = Field(default="Europe/Moscow", alias="TIMEZONE")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    catalog_import_enabled: bool = Field(default=True, alias="CATALOG_IMPORT_ENABLED")
+    catalog_import_hour: int = Field(default=4, alias="CATALOG_IMPORT_HOUR")
 
-    @field_validator("online_payment_enabled", mode="before")
+    @field_validator("online_payment_enabled", "catalog_import_enabled", mode="before")
     @classmethod
     def parse_bool(cls, v):  # noqa: ANN001
         if isinstance(v, bool):
@@ -45,6 +47,15 @@ class Settings(BaseSettings):
         if v is None:
             return False
         return str(v).lower() in {"1", "true", "yes", "on"}
+
+    @field_validator("catalog_import_hour", mode="before")
+    @classmethod
+    def clamp_import_hour(cls, v):  # noqa: ANN001
+        try:
+            h = int(v)
+        except (TypeError, ValueError):
+            return 4
+        return max(0, min(23, h))
 
     def admin_id_list(self) -> List[int]:
         return parse_admin_ids(os.environ.get("ADMIN_IDS") or self.admin_ids or "")
