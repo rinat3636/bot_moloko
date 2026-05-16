@@ -1,0 +1,13 @@
+# Railway / Nixpacks (if Dockerfile is not used)
+[phases.setup]
+nixPkgs = ["python311", "gcc"]
+
+[phases.install]
+cmds = ["pip install --upgrade pip", "pip install -r requirements.txt"]
+
+[variables]
+PYTHONPATH = "/app"
+PYTHONUNBUFFERED = "1"
+
+[start]
+cmd = "sh scripts/docker-entrypoint.sh"

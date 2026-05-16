@@ -19,6 +19,32 @@ $env:PYTHONPATH="."
 .\.venv\Scripts\python.exe -m milk_bot.bot.main
 ```
 
+## Деплой на Railway / Render / Docker
+
+Платформа должна собирать образ из **Dockerfile** (уже в репозитории) или использовать `nixpacks.toml`.
+
+**Тип сервиса:** Worker / Background — не Web (у бота polling, нет HTTP-порта).
+
+**Переменные в панели хостинга (обязательно):**
+
+| Переменная | Пример |
+|------------|--------|
+| `BOT_TOKEN` | от @BotFather |
+| `ADMIN_IDS` | `123456789` |
+| `PYTHONPATH` | `/app` (для Docker) или `.` (Nixpacks) |
+| `DATABASE_URL` | `sqlite+aiosqlite:////app/data/milk_bot.db` (путь на постоянный диск/volume) |
+
+Опционально: `ORDERS_CHAT_ID`, `MIN_ORDER_AMOUNT`, `DELIVERY_SLOTS`, `TIMEZONE`.
+
+После депоя один раз выполните импорт каталога (Shell на сервере):
+
+```bash
+python -m scripts.import_catalog
+```
+
+**Railway:** `railway.toml` указывает `builder = "DOCKERFILE"`.  
+**Render:** Blueprint `render.yaml` — тип `worker`, runtime `docker`.
+
 ## VPS (Ubuntu 22.04+, systemd)
 
 1. `sudo apt update && sudo apt install -y python3.11 python3.11-venv git`

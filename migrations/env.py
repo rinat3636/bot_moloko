@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 
 from alembic import context
@@ -7,6 +8,13 @@ from milk_bot.bot.db.base import Base
 from milk_bot.bot.db import models  # noqa: F401
 
 config = context.config
+
+
+def _database_url() -> str:
+    url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+    if url.startswith("sqlite+aiosqlite"):
+        return url.replace("sqlite+aiosqlite", "sqlite", 1)
+    return url
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
@@ -14,7 +22,7 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    url = config.get_main_option("sqlalchemy.url")
+    url = _database_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -27,8 +35,10 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    section = config.get_section(config.config_ini_section, {}) or {}
+    section["sqlalchemy.url"] = _database_url()
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

@@ -1,0 +1,18 @@
+# Render: use as "Background Worker", NOT "Web Service" (polling bot has no HTTP).
+services:
+  - type: worker
+    name: bot-moloko
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: PYTHONPATH
+        value: /app
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:////app/data/milk_bot.db
+      - key: TIMEZONE
+        value: Europe/Moscow
