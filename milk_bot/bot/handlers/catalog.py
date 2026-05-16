@@ -16,6 +16,7 @@ from milk_bot.bot.keyboards.inline import (
 from milk_bot.bot.services import catalog as catalog_service
 from milk_bot.bot.services import cart as cart_service
 from milk_bot.bot.states.catalog import ProductQtyStates
+from milk_bot.bot.utils.catalog_labels import format_category_products_message
 from milk_bot.bot.utils.catalog_ui import show_product_card
 from milk_bot.bot.utils.formatters import format_money
 
@@ -58,7 +59,9 @@ async def _render_products_list(
     )
     cat = await catalog_service.get_category(session, category_id)
     title = cat.name if cat else "Категория"
-    text = f"<b>{html.escape(title)}</b>\nСтр. {page + 1} из {pages}"
+    text = format_category_products_message(
+        products, title=title, page=page, pages=pages
+    )
     kb = products_keyboard(category_id, page, total, PAGE_SIZE, products)
     await message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 

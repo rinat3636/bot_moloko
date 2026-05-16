@@ -7,6 +7,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from milk_bot.bot.config import get_settings
 from milk_bot.bot.db.models import Category, Product
+from milk_bot.bot.utils.catalog_labels import product_button_label
 from milk_bot.bot.utils.formatters import format_money
 
 
@@ -26,8 +27,8 @@ def products_keyboard(
     products: list[Product],
 ) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
-    for p in products:
-        label = f"{p.name[:35]}… — {format_money(p.price)}" if len(p.name) > 35 else f"{p.name} — {format_money(p.price)}"
+    for i, p in enumerate(products, start=1):
+        label = product_button_label(i, p.name, p.price)
         b.add(InlineKeyboardButton(text=label, callback_data=f"vw:{p.id}:{category_id}:{page}"))
     b.adjust(1)
     pages = max(1, (total + page_size - 1) // page_size)
