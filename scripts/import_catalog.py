@@ -21,11 +21,54 @@ from milk_bot.bot.config import get_settings  # noqa: E402
 from milk_bot.bot.db.models import Category, Product  # noqa: E402
 
 BASE = "https://n-i.ru"
-SEED_PAGES: list[tuple[str, str]] = [
-    (f"{BASE}/moloko.html", "Молоко"),
-    (f"{BASE}/katalog-produktsii/sobstvennaya-produktsiya.html", "Собственная продукция"),
-    (f"{BASE}/katalog-produktsii/chuzhaya.html", "Доп. ассортимент"),
-]
+
+# Страницы-витрины с карточками товаров (div.blog div.item)
+CATEGORY_PAGES: dict[str, str] = {
+    "moloko": "Молоко",
+    "kefir": "Кефир",
+    "tvorog": "Творог",
+    "smetana": "Сметана",
+    "jogurt": "Йогурт",
+    "maslo-slivochnoe": "Масло сливочное",
+    "maslo-toplenoe": "Масло топлёное",
+    "syrki": "Сырки",
+    "smetanno-tvorozhnye": "Сметанно-творожные",
+    "tvorozhki": "Творожки",
+    "slivki": "Сливки",
+    "ryazhenka": "Ряженка",
+    "prostokvasha": "Простокваша",
+}
+
+def discover_category_pages(html: str) -> list[tuple[str, str]]:
+    """Ссылки на витрины вида /moloko.html, /kefir.html с главной каталога."""
+    tree = HTMLParser(html)
+    found: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for a in tree.css(".item-title a, h2.item-title a"):
+        href = a.attributes.get("href", "")
+        if not href:
+            continue
+        full = _abs_url(href)
+        path = urlparse(full).path.lower()
+        if not path.endswith(".html"):
+            continue
+        slug = path.rsplit("/", 1)[-1].removesuffix(".html")
+        if slug in CATEGORY_PAGES and full not in seen:
+            seen.add(full)
+            found.append((full, CATEGORY_PAGES[slug]))
+    return found
+
+
+def build_seed_pages() -> list[tuple[str, str]]:
+    seeds = [(f"{BASE}/{slug}.html", cat) for slug, cat in CATEGORY_PAGES.items()]
+    seeds += [
+        (f"{BASE}/katalog-produktsii/sobstvennaya-produktsiya.html", "Каталог"),
+        (f"{BASE}/katalog-produktsii/chuzhaya.html", "Доп. ассортимент"),
+    ]
+    return seeds
+
+
+SEED_PAGES: list[tuple[str, str]] = build_seed_pages()
 
 
 def _abs_url(href: str) -> str:
@@ -79,7 +122,24 @@ def parse_products_from_page(html: str, default_category: str) -> list[dict]:
     return out
 
 
-def discover_more_pages(html: str, limit: int = 40) -> list[str]:
+def category_from_url(url: str, fallback: str) -> str:
+    path = urlparse(url).path.lower().strip("/")
+    if path.endswith(".html"):
+        slug = path.rsplit("/", 1)[-1].removesuffix(".html")
+        if slug in CATEGORY_PAGES:
+            return CATEGORY_PAGES[slug]
+    for slug, name in CATEGORY_PAGES.items():
+        if f"/{slug}/" in path or path.startswith(f"{slug}/"):
+            return name
+    low = url.lower()
+    if "chuzhaya" in low:
+        return "Доп. ассортимент"
+    if "katalog-produktsii" in low:
+        return fallback or "Каталог"
+    return fallback or "Прочее"
+
+
+def discover_more_pages(html: str, limit: int = 80) -> list[str]:
     tree = HTMLParser(html)
     urls: list[str] = []
     for a in tree.css("a"):
@@ -92,17 +152,35 @@ def discover_more_pages(html: str, limit: int = 40) -> list[str]:
         path = urlparse(full).path.lower()
         if not full.endswith(".html"):
             continue
-        if not (
-            "/moloko/" in path
-            or path.endswith("/moloko.html")
+        allowed = (
+            any(f"/{slug}" in path or path.endswith(f"{slug}.html") for slug in CATEGORY_PAGES)
+            or "/moloko/" in path
             or "/katalog-produktsii/" in path
-        ):
+        )
+        if not allowed:
             continue
         if full not in urls:
             urls.append(full)
         if len(urls) >= limit:
             break
     return urls
+
+
+def dedupe_products(items: list[dict]) -> list[dict]:
+    by_url: dict[str, dict] = {}
+    for raw in items:
+        src = raw.get("source_url")
+        if not src:
+            continue
+        if src not in by_url:
+            by_url[src] = raw
+            continue
+        prev = by_url[src]
+        if not prev.get("photo_url") and raw.get("photo_url"):
+            prev["photo_url"] = raw["photo_url"]
+        if not prev.get("description") and raw.get("description"):
+            prev["description"] = raw["description"]
+    return list(by_url.values())
 
 
 async def fetch(client: httpx.AsyncClient, url: str) -> str:
@@ -182,9 +260,22 @@ async def run_import() -> None:
     collected: list[dict] = []
     seen_pages: set[str] = set()
 
-    MAX_PAGES = 60
+    MAX_PAGES = 120
+    queued_urls: set[str] = set()
     async with httpx.AsyncClient(headers={"User-Agent": "milk-bot-import/1.0"}) as client:
         queue = list(SEED_PAGES)
+        try:
+            index_html = await fetch(
+                client, f"{BASE}/katalog-produktsii/sobstvennaya-produktsiya.html"
+            )
+            for url, cat in discover_category_pages(index_html):
+                if url not in queued_urls:
+                    queue.append((url, cat))
+                    queued_urls.add(url)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Category index fetch failed: {}", exc)
+        for url, _ in queue:
+            queued_urls.add(url)
         while queue and len(seen_pages) < MAX_PAGES:
             url, cat = queue.pop(0)
             if url in seen_pages:
@@ -195,18 +286,26 @@ async def run_import() -> None:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to fetch {}: {}", url, exc)
                 continue
-            items = parse_products_from_page(html, cat)
+            page_cat = category_from_url(url, cat)
+            items = parse_products_from_page(html, page_cat)
             for p in items:
+                p["category_hint"] = category_from_url(p.get("source_url", ""), page_cat)
                 collected.append(p)
             for extra in discover_more_pages(html):
-                if extra not in seen_pages and extra not in [u for u, _ in queue]:
-                    guessed = cat
-                    low = extra.lower()
-                    if "chuzhaya" in low:
-                        guessed = "Доп. ассортимент"
-                    elif "sobstvennaya" in low or "moloko" in low:
-                        guessed = "Молоко" if "moloko" in low else "Собственная продукция"
-                    queue.append((extra, guessed))
+                if extra in seen_pages or extra in queued_urls:
+                    continue
+                queued_urls.add(extra)
+                guessed = category_from_url(extra, page_cat)
+                queue.append((extra, guessed))
+
+    collected = dedupe_products(collected)
+    with_photo = sum(1 for p in collected if p.get("photo_url"))
+    logger.info(
+        "Parsed {} products ({} with image URL), from {} pages",
+        len(collected),
+        with_photo,
+        len(seen_pages),
+    )
 
     with SessionLocal() as session:
         ins, upd, sk = import_products(session, collected)

@@ -43,6 +43,26 @@ async def notify_new_order(bot: Bot, order: Order) -> None:
             logger.warning("notify orders chat failed: {}", exc)
 
 
+async def notify_admins_order_cancelled(bot: Bot, order: Order) -> None:
+    settings = get_settings()
+    text = (
+        f"❌ Клиент отменил заказ #{order.id}\n"
+        f"👤 {order.full_name}, {order.phone}\n"
+        f"📅 {order.delivery_date:%d.%m.%Y}, {order.delivery_slot}"
+    )
+    for aid in settings.admin_id_list():
+        try:
+            await bot.send_message(aid, text)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("notify admin cancel {} failed: {}", aid, exc)
+    chat = settings.orders_chat_id_int()
+    if chat is not None:
+        try:
+            await bot.send_message(chat, text)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("notify orders chat cancel failed: {}", exc)
+
+
 async def notify_order_status(bot: Bot, user_id: int, order: Order) -> None:
     labels = {
         "new": "новый",

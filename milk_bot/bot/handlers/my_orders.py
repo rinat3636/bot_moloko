@@ -1,17 +1,22 @@
 from __future__ import annotations
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from milk_bot.bot.handlers.common import block_if_busy_fsm
+from milk_bot.bot.services import notifier as notifier_service
 from milk_bot.bot.services import order as order_service
 
 router = Router()
 
 
 @router.message(F.text == "📦 Мои заказы")
-async def my_orders(message: Message, session: AsyncSession) -> None:
+async def my_orders(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    if not await block_if_busy_fsm(message, state):
+        return
     uid = message.from_user.id
     orders = await order_service.list_user_orders(session, uid, limit=10)
     if not orders:
@@ -61,7 +66,7 @@ async def order_detail(cq: CallbackQuery, session: AsyncSession) -> None:
 
 
 @router.callback_query(F.data.startswith("mc:"))
-async def cancel_my(cq: CallbackQuery, session: AsyncSession) -> None:
+async def cancel_my(cq: CallbackQuery, session: AsyncSession, bot: Bot) -> None:
     oid = int(cq.data.split(":")[1])
     o = await order_service.get_order(session, oid)
     if not o or o.user_id != cq.from_user.id:
@@ -71,6 +76,7 @@ async def cancel_my(cq: CallbackQuery, session: AsyncSession) -> None:
         await cq.answer("Отмена недоступна", show_alert=True)
         return
     await order_service.cancel_order_customer(session, o)
+    await notifier_service.notify_admins_order_cancelled(bot, o)
     await cq.answer("Заказ отменён")
     try:
         await cq.message.edit_reply_markup(reply_markup=None)

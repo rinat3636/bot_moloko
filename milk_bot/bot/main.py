@@ -16,6 +16,7 @@ from milk_bot.bot.config import get_settings
 from milk_bot.bot.handlers import setup_routers
 from milk_bot.bot.middlewares.db import DbSessionMiddleware
 from milk_bot.bot.middlewares.user import UserMiddleware
+from milk_bot.bot.utils.telegram import chat_id_from_update, user_id_from_update
 
 
 def configure_logging() -> None:
@@ -36,6 +37,8 @@ def configure_logging() -> None:
 async def main() -> None:
     settings = get_settings()
     configure_logging()
+    if not settings.admin_id_list():
+        logger.warning("ADMIN_IDS is empty — команда /admin недоступна")
     bot = Bot(
         settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
@@ -53,15 +56,28 @@ async def main() -> None:
     @dp.errors()
     async def on_error(event: ErrorEvent) -> None:
         logger.exception("Unhandled error: {}", event.exception)
-        admins = settings.admin_id_list()
-        if admins:
+        update = event.update
+        chat_id = chat_id_from_update(update)
+        user_id = user_id_from_update(update)
+        if chat_id:
             try:
                 await bot.send_message(
-                    admins[0],
-                    f"⚠️ Ошибка бота:\n<code>{event.exception}</code>",
+                    chat_id,
+                    "Произошла ошибка. Попробуйте ещё раз или нажмите /start.",
                 )
             except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed to alert admin: {}", exc)
+                logger.warning("Failed to notify user chat {}: {}", chat_id, exc)
+        admins = settings.admin_id_list()
+        detail = (
+            f"⚠️ Ошибка бота\n"
+            f"chat_id={chat_id} user_id={user_id}\n"
+            f"<code>{event.exception}</code>"
+        )
+        for aid in admins:
+            try:
+                await bot.send_message(aid, detail)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to alert admin {}: {}", aid, exc)
 
     try:
         await dp.start_polling(bot)

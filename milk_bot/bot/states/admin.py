@@ -16,3 +16,7 @@ class AdminProductStates(StatesGroup):
     waiting_price = State()
     waiting_description = State()
     waiting_photo = State()
+    waiting_edit_price = State()
+    waiting_edit_name = State()
+    waiting_edit_description = State()
+    waiting_edit_photo = State()

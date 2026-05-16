@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton
@@ -9,6 +10,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from milk_bot.bot.config import get_settings
 from milk_bot.bot.db.models import Order, OrderItem
 from milk_bot.bot.filters.admin import AdminFilter
 
@@ -27,7 +29,8 @@ async def admin_stats(cq: CallbackQuery, session: AsyncSession) -> None:
     await cq.answer()
     res = await session.execute(select(Order))
     all_o = list(res.scalars().all())
-    now = datetime.utcnow()
+    tz = ZoneInfo(get_settings().timezone)
+    now = datetime.now(tz)
 
     def in_days(n: int) -> list[Order]:
         start = now - timedelta(days=n)
@@ -36,8 +39,10 @@ async def admin_stats(cq: CallbackQuery, session: AsyncSession) -> None:
             ts = o.created_at
             if ts is None:
                 continue
-            if ts.tzinfo:
-                ts = ts.replace(tzinfo=None)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=tz)
+            else:
+                ts = ts.astimezone(tz)
             if ts >= start:
                 out.append(o)
         return out

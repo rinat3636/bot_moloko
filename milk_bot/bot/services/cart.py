@@ -27,6 +27,11 @@ async def set_quantity(
     if quantity <= 0:
         await remove_product(session, user_id, product_id)
         return None
+    from milk_bot.bot.db.models import Product
+
+    product = await session.get(Product, product_id)
+    if not product or not product.is_active:
+        raise ValueError("inactive")
     line = await get_line(session, user_id, product_id)
     if line is None:
         line = CartItem(user_id=user_id, product_id=product_id, quantity=quantity)

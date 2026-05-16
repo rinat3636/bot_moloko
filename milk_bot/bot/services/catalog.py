@@ -57,6 +57,34 @@ async def get_category(session: AsyncSession, category_id: int) -> Category | No
     return res.scalars().first()
 
 
+async def count_category_products_total(session: AsyncSession, category_id: int) -> int:
+    q = await session.execute(
+        select(func.count()).select_from(Product).where(Product.category_id == category_id)
+    )
+    return int(q.scalar_one())
+
+
+async def rename_category(session: AsyncSession, category_id: int, name: str) -> Category | None:
+    cat = await get_category(session, category_id)
+    if not cat:
+        return None
+    cat.name = name
+    await session.flush()
+    return cat
+
+
+async def delete_category(session: AsyncSession, category_id: int) -> tuple[bool, str]:
+    total = await count_category_products_total(session, category_id)
+    if total > 0:
+        return False, f"В категории {total} товар(ов). Сначала удалите или перенесите их."
+    cat = await get_category(session, category_id)
+    if not cat:
+        return False, "Категория не найдена."
+    await session.delete(cat)
+    await session.flush()
+    return True, "Категория удалена."
+
+
 async def cart_lines(session: AsyncSession, user_id: int) -> list[CartItem]:
     res = await session.execute(
         select(CartItem)

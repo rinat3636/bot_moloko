@@ -6,13 +6,11 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot, F, Router
-from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Contact, Message
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from milk_bot.bot.config import get_settings
-from milk_bot.bot.db.models import CartItem
 from milk_bot.bot.keyboards.inline import (
     confirm_order_keyboard,
     delivery_dates_keyboard,
@@ -26,6 +24,7 @@ from milk_bot.bot.services import order as order_service
 from milk_bot.bot.services import payment_yookassa
 from milk_bot.bot.states.order import OrderCheckoutStates
 from milk_bot.bot.utils.formatters import format_money
+from milk_bot.bot.utils.order_checkout import is_allowed_delivery_date, is_allowed_delivery_slot
 from milk_bot.bot.utils.validators import normalize_phone, validate_address, validate_full_name
 
 router = Router()
@@ -41,6 +40,19 @@ async def start_order_fsm_from_cart(
     if not lines:
         await cq.answer("Корзина пуста", show_alert=True)
         return
+    try:
+        await order_service.get_cart_checkout_summary(session, uid)
+    except ValueError as e:
+        code = str(e)
+        if code == "inactive_only":
+            await cq.answer(
+                "В корзине только недоступные товары. Обновите корзину.",
+                show_alert=True,
+            )
+        else:
+            await cq.answer("Корзина пуста", show_alert=True)
+        return
+    await state.clear()
     await cq.answer()
     await state.set_state(OrderCheckoutStates.waiting_name)
     await cq.message.edit_text(
@@ -57,12 +69,6 @@ async def cb_cancel_inline(cq: CallbackQuery, state: FSMContext) -> None:
     await cq.message.edit_text("Оформление отменено.")
 
 
-@router.message(Command("cancel"))
-async def cmd_cancel(message: Message, state: FSMContext) -> None:
-    await state.clear()
-    await message.answer("Оформление отменено.", reply_markup=remove_keyboard())
-
-
 @router.message(OrderCheckoutStates.waiting_name, F.text)
 async def step_name(message: Message, state: FSMContext) -> None:
     ok, val = validate_full_name(message.text or "")
@@ -72,7 +78,8 @@ async def step_name(message: Message, state: FSMContext) -> None:
     await state.update_data(full_name=val)
     await state.set_state(OrderCheckoutStates.waiting_phone)
     await message.answer(
-        "Укажите телефон: нажмите кнопку ниже или введите вручную в формате +7…",
+        "Укажите телефон: нажмите кнопку ниже или введите вручную в формате +7…\n\n"
+        "Отмена: /cancel",
         reply_markup=phone_request_keyboard(),
     )
 
@@ -80,8 +87,11 @@ async def step_name(message: Message, state: FSMContext) -> None:
 @router.message(OrderCheckoutStates.waiting_phone, F.contact)
 async def step_phone_contact(message: Message, state: FSMContext) -> None:
     contact = message.contact
-    if not contact or contact.user_id != message.from_user.id:
-        await message.answer("Отправьте свой контакт через кнопку.")
+    if not contact:
+        await message.answer("Отправьте контакт через кнопку.")
+        return
+    if contact.user_id is not None and contact.user_id != message.from_user.id:
+        await message.answer("Нужен ваш номер — нажмите «Отправить номер».")
         return
     raw = contact.phone_number or ""
     ok, phone = normalize_phone(raw)
@@ -90,7 +100,10 @@ async def step_phone_contact(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(phone=phone)
     await state.set_state(OrderCheckoutStates.waiting_address)
-    await message.answer("Введите адрес доставки (от 10 символов).", reply_markup=remove_keyboard())
+    await message.answer(
+        "Введите адрес доставки (от 10 символов).\n\nОтмена: /cancel",
+        reply_markup=remove_keyboard(),
+    )
 
 
 @router.message(OrderCheckoutStates.waiting_phone, F.text)
@@ -101,7 +114,10 @@ async def step_phone_text(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(phone=phone)
     await state.set_state(OrderCheckoutStates.waiting_address)
-    await message.answer("Введите адрес доставки (от 10 символов).", reply_markup=remove_keyboard())
+    await message.answer(
+        "Введите адрес доставки (от 10 символов).\n\nОтмена: /cancel",
+        reply_markup=remove_keyboard(),
+    )
 
 
 @router.message(OrderCheckoutStates.waiting_address, F.text)
@@ -115,15 +131,22 @@ async def step_address(message: Message, state: FSMContext) -> None:
     settings = get_settings()
     today = datetime.now(ZoneInfo(settings.timezone)).date()
     await message.answer(
-        "Выберите дату доставки:",
+        "Выберите дату доставки:\n\nОтмена: /cancel",
         reply_markup=delivery_dates_keyboard(today),
     )
 
 
 @router.callback_query(OrderCheckoutStates.waiting_date, F.data.startswith("dl:"))
 async def step_date_cb(cq: CallbackQuery, state: FSMContext) -> None:
+    try:
+        d = date.fromisoformat(cq.data.split(":", 1)[1])
+    except ValueError:
+        await cq.answer("Некорректная дата", show_alert=True)
+        return
+    if not is_allowed_delivery_date(d):
+        await cq.answer("Эта дата недоступна для доставки", show_alert=True)
+        return
     await cq.answer()
-    d = date.fromisoformat(cq.data.split(":", 1)[1])
     await state.update_data(delivery_date=d.isoformat())
     await state.set_state(OrderCheckoutStates.waiting_time)
     await cq.message.edit_text(
@@ -136,8 +159,11 @@ async def step_date_cb(cq: CallbackQuery, state: FSMContext) -> None:
 async def step_slot_cb(
     cq: CallbackQuery, state: FSMContext, session: AsyncSession
 ) -> None:
-    await cq.answer()
     slot = cq.data.split(":", 1)[1]
+    if not is_allowed_delivery_slot(slot):
+        await cq.answer("Недоступный интервал", show_alert=True)
+        return
+    await cq.answer()
     await state.update_data(delivery_slot=slot)
     await state.set_state(OrderCheckoutStates.waiting_payment)
     if not payment_yookassa.is_online_payment_available():
@@ -156,11 +182,11 @@ async def step_slot_cb(
 async def step_payment_cb(
     cq: CallbackQuery, state: FSMContext, session: AsyncSession
 ) -> None:
-    await cq.answer()
     method = cq.data.split(":", 1)[1]
     if method == "online" and not payment_yookassa.is_online_payment_available():
         await cq.answer("Онлайн-оплата отключена", show_alert=True)
         return
+    await cq.answer()
     await state.update_data(payment_method=method)
     await state.set_state(OrderCheckoutStates.waiting_confirm)
     await cq.message.edit_text(
@@ -174,20 +200,28 @@ async def _build_preview_text(
     session: AsyncSession, user_id: int, state: FSMContext
 ) -> str:
     data = await state.get_data()
-    lines = await catalog_service.cart_lines(session, user_id)
+    snapshots, skipped = await order_service.get_cart_checkout_summary(session, user_id)
     rows: list[str] = []
     total = Decimal("0")
-    for li in lines:
-        if not isinstance(li, CartItem) or not li.product:
-            continue
-        sub = (li.product.price * li.quantity).quantize(Decimal("0.01"))
+    for p, qty in snapshots:
+        sub = (p.price * qty).quantize(Decimal("0.01"))
         total += sub
-        rows.append(
-            f"• {html.escape(li.product.name)} × {li.quantity} = {format_money(sub)}"
-        )
+        rows.append(f"• {html.escape(p.name)} × {qty} = {format_money(sub)}")
     body = "\n".join(rows) if rows else "(пусто)"
     d = date.fromisoformat(data["delivery_date"])
-    pay = "Наличными при получении" if data.get("payment_method") == "cash" else data.get("payment_method")
+    pay = (
+        "Наличными при получении"
+        if data.get("payment_method") == "cash"
+        else data.get("payment_method", "cash")
+    )
+    extra = ""
+    if skipped:
+        extra += (
+            "\n\n⚠️ Не попадут в заказ (сняты с продажи):\n"
+            + html.escape(", ".join(skipped))
+        )
+    if total == 0:
+        extra += "\n\n⚠️ Сумма 0 ₽ — уточним стоимость при подтверждении."
     return (
         f"<b>Проверьте заказ</b>\n\n"
         f"👤 {html.escape(data['full_name'])}\n"
@@ -196,7 +230,7 @@ async def _build_preview_text(
         f"📅 {d:%d.%m.%Y}, {html.escape(data['delivery_slot'])}\n"
         f"💵 {html.escape(str(pay))}\n\n"
         f"Состав:\n{body}\n\n"
-        f"<b>Итого: {format_money(total)}</b>"
+        f"<b>Итого: {format_money(total)}</b>{extra}"
     )
 
 
@@ -207,18 +241,23 @@ async def step_confirm_ok(
     session: AsyncSession,
     bot: Bot,
 ) -> None:
-    await cq.answer()
     data = await state.get_data()
+    d = date.fromisoformat(data["delivery_date"])
+    slot = data["delivery_slot"]
+    if not is_allowed_delivery_date(d) or not is_allowed_delivery_slot(slot):
+        await cq.answer("Дата или интервал больше недоступны", show_alert=True)
+        return
+    await cq.answer()
     uid = cq.from_user.id
     try:
-        order = await order_service.create_order_from_cart(
+        order, skipped = await order_service.create_order_from_cart(
             session,
             uid,
             full_name=data["full_name"],
             phone=data["phone"],
             address=data["address"],
-            delivery_date=date.fromisoformat(data["delivery_date"]),
-            delivery_slot=data["delivery_slot"],
+            delivery_date=d,
+            delivery_slot=slot,
             payment_method=data.get("payment_method", "cash"),
         )
     except ValueError as e:
@@ -228,13 +267,16 @@ async def step_confirm_ok(
                 f"Минимальная сумма заказа {get_settings().min_order_amount} ₽",
                 show_alert=True,
             )
+        elif code == "inactive_only":
+            await cq.answer("В корзине нет доступных товаров", show_alert=True)
         else:
             await cq.answer("Не удалось оформить заказ", show_alert=True)
         return
     await state.clear()
-    await cq.message.edit_text(
-        f"Заказ #{order.id} принят. Мы свяжемся для подтверждения.",
-    )
+    text = f"Заказ #{order.id} принят. Мы свяжемся для подтверждения."
+    if skipped:
+        text += f"\n\nНе вошли в заказ (недоступны): {', '.join(skipped)}."
+    if order.total == 0:
+        text += "\n\nСумма уточняется — цены в каталоге обновляются."
+    await cq.message.edit_text(text)
     await notifier_service.notify_new_order(bot, order)
-
-

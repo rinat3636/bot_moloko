@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject
+from aiogram.types import CallbackQuery, Message, TelegramObject
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,5 +40,13 @@ class UserMiddleware(BaseMiddleware):
         else:
             user.username = from_user.username
             user.full_name = from_user.full_name
+
+        if user.is_blocked:
+            if isinstance(event, Message):
+                await event.answer("Доступ к боту ограничён. Обратитесь к администратору.")
+            elif isinstance(event, CallbackQuery):
+                await event.answer("Доступ ограничён", show_alert=True)
+            return None
+
         data["db_user"] = user
         return await handler(event, data)

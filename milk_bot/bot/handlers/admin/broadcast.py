@@ -84,17 +84,21 @@ async def broadcast_go(
     for uid in ids:
         try:
             if photo:
-                await bot.send_photo(uid, photo, caption=text[:1024])
+                await bot.send_photo(
+                    uid, photo, caption=text[:1024], parse_mode=None
+                )
             else:
-                await bot.send_message(uid, text[:4096])
+                await bot.send_message(uid, text[:4096], parse_mode=None)
             ok += 1
         except TelegramRetryAfter as e:
             await asyncio.sleep(e.retry_after)
             try:
                 if photo:
-                    await bot.send_photo(uid, photo, caption=text[:1024])
+                    await bot.send_photo(
+                        uid, photo, caption=text[:1024], parse_mode=None
+                    )
                 else:
-                    await bot.send_message(uid, text[:4096])
+                    await bot.send_message(uid, text[:4096], parse_mode=None)
                 ok += 1
             except Exception:
                 err += 1

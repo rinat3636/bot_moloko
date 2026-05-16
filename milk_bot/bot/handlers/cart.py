@@ -47,7 +47,11 @@ async def _show_cart(target: Message, session: AsyncSession, user_id: int, *, ed
 
 
 @router.message(F.text == "🛒 Корзина")
-async def open_cart(message: Message, session: AsyncSession) -> None:
+async def open_cart(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    from milk_bot.bot.handlers.common import block_if_busy_fsm
+
+    if not await block_if_busy_fsm(message, state):
+        return
     await _show_cart(message, session, message.from_user.id, edit=False)
 
 

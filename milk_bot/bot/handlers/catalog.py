@@ -4,9 +4,10 @@ import html
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message, URLInputFile
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from milk_bot.bot.handlers.common import block_if_busy_fsm
 from milk_bot.bot.keyboards.inline import (
     categories_keyboard,
     product_qty_keyboard,
@@ -15,6 +16,7 @@ from milk_bot.bot.keyboards.inline import (
 from milk_bot.bot.services import catalog as catalog_service
 from milk_bot.bot.services import cart as cart_service
 from milk_bot.bot.states.catalog import ProductQtyStates
+from milk_bot.bot.utils.catalog_ui import show_product_card
 from milk_bot.bot.utils.formatters import format_money
 
 router = Router()
@@ -48,19 +50,24 @@ async def _render_products_list(
     if total == 0:
         await message.edit_text("В этой категории пока нет активных товаров.")
         return
+    pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(0, min(page, pages - 1))
     offset = page * PAGE_SIZE
     products = await catalog_service.list_products_page(
         session, category_id, offset, PAGE_SIZE
     )
     cat = await catalog_service.get_category(session, category_id)
     title = cat.name if cat else "Категория"
-    text = f"<b>{html.escape(title)}</b>\nСтр. {page + 1}"
+    text = f"<b>{html.escape(title)}</b>\nСтр. {page + 1} из {pages}"
     kb = products_keyboard(category_id, page, total, PAGE_SIZE, products)
     await message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.message(F.text == "🥛 Каталог")
-async def open_catalog(message: Message, session: AsyncSession) -> None:
+async def open_catalog(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    if not await block_if_busy_fsm(message, state):
+        return
+    await state.clear()
     await _render_categories(message, session, edit=False)
 
 
@@ -72,9 +79,9 @@ async def cb_cat_list(cq: CallbackQuery, session: AsyncSession) -> None:
 
 @router.callback_query(F.data.startswith("ct:"))
 async def cb_cat_open(cq: CallbackQuery, session: AsyncSession) -> None:
-    await cq.answer()
     if cq.data == "ct:l":
         return
+    await cq.answer()
     cid = int(cq.data.split(":")[1])
     await _render_products_list(cq.message, session, cid, 0)
 
@@ -88,7 +95,6 @@ async def cb_page(cq: CallbackQuery, session: AsyncSession) -> None:
 
 @router.callback_query(F.data.startswith("vw:"))
 async def cb_view_product(cq: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
-    await cq.answer()
     parts = cq.data.split(":")
     pid = int(parts[1])
     cid = int(parts[2]) if len(parts) > 2 else 0
@@ -97,6 +103,7 @@ async def cb_view_product(cq: CallbackQuery, session: AsyncSession, state: FSMCo
     if not p or not p.is_active:
         await cq.answer("Товар недоступен", show_alert=True)
         return
+    await cq.answer()
     await state.set_state(ProductQtyStates.picking)
     await state.update_data(pid=pid, qty=1, cid=cid, page=page)
     desc = html.escape(p.description or "")
@@ -107,16 +114,7 @@ async def cb_view_product(cq: CallbackQuery, session: AsyncSession, state: FSMCo
         f"Количество: <b>1</b>"
     )
     kb = product_qty_keyboard(pid, 1)
-    if p.photo_file_id and p.photo_file_id.startswith("http"):
-        await cq.message.delete()
-        await cq.message.answer_photo(
-            URLInputFile(p.photo_file_id),
-            caption=text[:1024],
-            reply_markup=kb,
-            parse_mode="HTML",
-        )
-    else:
-        await cq.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await show_product_card(cq, text=text, reply_markup=kb, product=p)
 
 
 @router.callback_query(ProductQtyStates.picking, F.data == "pq:m")
@@ -156,10 +154,7 @@ async def _refresh_product_card(
         f"Количество: <b>{qty}</b>"
     )
     kb = product_qty_keyboard(pid, qty)
-    if cq.message.photo:
-        await cq.message.edit_caption(caption=text[:1024], reply_markup=kb, parse_mode="HTML")
-    else:
-        await cq.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await show_product_card(cq, text=text, reply_markup=kb, product=p)
 
 
 @router.callback_query(ProductQtyStates.picking, F.data == "pq:a")
@@ -168,7 +163,15 @@ async def cb_add_cart(cq: CallbackQuery, state: FSMContext, session: AsyncSessio
     uid = cq.from_user.id
     pid = int(data["pid"])
     qty = int(data.get("qty", 1))
-    await cart_service.set_quantity(session, uid, pid, qty)
+    p = await catalog_service.get_product(session, pid)
+    if not p or not p.is_active:
+        await cq.answer("Товар недоступен", show_alert=True)
+        return
+    try:
+        await cart_service.set_quantity(session, uid, pid, qty)
+    except ValueError:
+        await cq.answer("Товар недоступен", show_alert=True)
+        return
     await state.clear()
     await cq.answer("Добавлено в корзину", show_alert=True)
     chat_id = cq.message.chat.id
