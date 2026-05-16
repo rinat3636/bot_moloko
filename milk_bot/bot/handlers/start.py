@@ -3,7 +3,10 @@ from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
+from milk_bot.bot.config import get_settings
 from milk_bot.bot.keyboards.reply import main_menu_keyboard
+from milk_bot.bot.utils.formatters import format_money
+
 router = Router()
 
 
@@ -23,12 +26,26 @@ async def about_delivery(message: Message, state: FSMContext) -> None:
 
     if not await block_if_busy_fsm(message, state):
         return
-    await message.answer(
-        "Доставка молочной продукции по Москве (MVP — одно ТСЖ).\n"
-        "Интервалы и дата выбираются при оформлении заказа.\n"
-        "Оплата на MVP — наличными при получении.\n"
-        "Минимальная сумма заказа задаётся администратором в настройках.",
-    )
+    settings = get_settings()
+    lines = [
+        "🥛 <b>О доставке</b>",
+        "",
+        "Привозим свежую молочную продукцию <b>до двери</b>.",
+        "",
+        "При оформлении заказа выберите удобные <b>дату</b> и <b>время</b> — "
+        "мы привезём заказ в выбранный интервал.",
+        "",
+        "Оплата — <b>наличными</b> при получении.",
+    ]
+    if settings.min_order_amount > 0:
+        lines.extend(
+            [
+                "",
+                f"Минимальная сумма заказа — <b>{format_money(settings.min_order_amount)}</b>.",
+            ]
+        )
+    lines.extend(["", "Вопросы по заказу — напишите нам после оформления, мы на связи."])
+    await message.answer("\n".join(lines), parse_mode="HTML")
 
 
 @router.message(F.text == "📞 Контакты")
@@ -38,6 +55,9 @@ async def contacts(message: Message, state: FSMContext) -> None:
     if not await block_if_busy_fsm(message, state):
         return
     await message.answer(
-        "Связь с администратором — через этого бота после оформления заказа.\n"
-        "Телефон для связи уточняйте у управляющей компании вашего ТСЖ.",
+        "📞 <b>Контакты</b>\n\n"
+        "После оформления заказа все вопросы можно задать <b>в этом чате</b> — "
+        "мы ответим по статусу доставки и составу заказа.\n\n"
+        "Срочные вопросы — через управляющую компанию вашего дома.",
+        parse_mode="HTML",
     )
