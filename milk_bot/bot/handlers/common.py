@@ -21,6 +21,12 @@ def is_search_state(state_str: str | None) -> bool:
     return state_str.startswith("SearchStates:")
 
 
+def is_contact_state(state_str: str | None) -> bool:
+    if not state_str:
+        return False
+    return state_str.startswith("ContactStates:")
+
+
 @router.callback_query(F.data == "ig:n")
 async def cb_ignore(cq: CallbackQuery) -> None:
     await cq.answer()
@@ -38,6 +44,8 @@ async def cmd_cancel_global(message: Message, state: FSMContext) -> None:
         notice = "Действие в админ-панели отменено."
     elif is_search_state(current):
         notice = "Поиск отменён."
+    elif is_contact_state(current):
+        notice = "Обращение не отправлено."
     else:
         notice = "Действие отменено."
     await clear_fsm_with_menu(message, state, notice=notice)
@@ -70,6 +78,12 @@ async def block_if_busy_fsm(event: Message | CallbackQuery, state: FSMContext) -
         await _reply_busy(
             event,
             "Сначала завершите выбор товара (назад) или отмените: /cancel",
+        )
+        return False
+    if is_contact_state(current):
+        await _reply_busy(
+            event,
+            "Сначала отправьте обращение или отмените: /cancel",
         )
         return False
     return True

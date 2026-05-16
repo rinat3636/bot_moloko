@@ -67,20 +67,3 @@ async def about_delivery(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.message(F.text == "📞 Контакты")
-async def contacts(message: Message, state: FSMContext) -> None:
-    from milk_bot.bot.handlers.common import block_if_busy_fsm
-    from milk_bot.bot.keyboards.reply import menu_keyboard_for
-
-    if not await block_if_busy_fsm(message, state):
-        return
-    if is_admin(message.from_user.id if message.from_user else 0):
-        return
-    await message.answer(
-        "📞 <b>Контакты</b>\n\n"
-        "После оформления заказа все вопросы можно задать <b>в этом чате</b> — "
-        "мы ответим по статусу доставки и составу заказа.\n\n"
-        "Срочные вопросы — через управляющую компанию вашего дома.",
-        parse_mode="HTML",
-        reply_markup=menu_keyboard_for(message.from_user.id if message.from_user else 0),
-    )
