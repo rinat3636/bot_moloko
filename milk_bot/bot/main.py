@@ -39,7 +39,8 @@ async def main() -> None:
     configure_logging()
     from milk_bot.bot.config import get_admin_ids
 
-    admin_count = len(get_admin_ids())
+    admins = get_admin_ids()
+    admin_count = len(admins)
     if admin_count:
         logger.info("ADMIN_IDS loaded: {} admin(s)", admin_count)
     else:
@@ -54,6 +55,24 @@ async def main() -> None:
     dp.update.outer_middleware(UserMiddleware())
 
     dp.include_router(setup_routers())
+
+    if admins:
+        for aid in admins:
+            try:
+                await bot.send_message(
+                    aid,
+                    "✅ <b>Бот запущен</b>\n\n"
+                    "Панель администратора — после /start "
+                    "(кнопки в сообщении, не внизу экрана).\n"
+                    f"Ваш ID в ADMIN_IDS: <code>{aid}</code>",
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Не удалось уведомить админа {} (проверьте ID и что вы писали боту): {}",
+                    aid,
+                    exc,
+                )
 
     scheduler = AsyncIOScheduler(timezone=settings.timezone)
 

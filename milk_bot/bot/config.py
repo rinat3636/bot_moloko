@@ -75,6 +75,8 @@ class Settings(BaseSettings):
 
 def parse_admin_ids(raw: str) -> List[int]:
     text = (raw or "").strip().strip("\ufeff").strip('"').strip("'")
+    if "=" in text and not text.lower().startswith("http"):
+        text = text.rsplit("=", 1)[-1].strip()
     if not text:
         return []
     # Одно число без запятых, либо список через , ; перенос строки
@@ -105,6 +107,10 @@ def get_admin_ids() -> List[int]:
             if ids:
                 return ids
     return get_settings().admin_id_list()
+
+
+def is_admin(user_id: int) -> bool:
+    return user_id in get_admin_ids()
 
 
 @lru_cache
