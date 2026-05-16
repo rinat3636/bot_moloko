@@ -5,6 +5,7 @@ from typing import Any, Awaitable, Callable, Dict
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
 from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from milk_bot.bot.db.models import User
@@ -28,18 +29,25 @@ class UserMiddleware(BaseMiddleware):
         if from_user is None:
             return await handler(event, data)
 
+        # Upsert avoids UNIQUE on users.id when updates arrive in parallel (e.g. deploy with 2 replicas).
+        insert_stmt = sqlite_insert(User).values(
+            id=from_user.id,
+            username=from_user.username,
+            full_name=from_user.full_name,
+            is_blocked=False,
+        )
+        await session.execute(
+            insert_stmt.on_conflict_do_update(
+                index_elements=[User.id],
+                set_={
+                    "username": insert_stmt.excluded.username,
+                    "full_name": insert_stmt.excluded.full_name,
+                },
+            )
+        )
         user = await session.scalar(select(User).where(User.id == from_user.id))
         if user is None:
-            user = User(
-                id=from_user.id,
-                username=from_user.username,
-                full_name=from_user.full_name,
-            )
-            session.add(user)
-            await session.flush()
-        else:
-            user.username = from_user.username
-            user.full_name = from_user.full_name
+            return await handler(event, data)
 
         if user.is_blocked:
             if isinstance(event, Message):
