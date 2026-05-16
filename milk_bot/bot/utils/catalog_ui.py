@@ -1,17 +1,21 @@
 from __future__ import annotations
 
-from aiogram.types import CallbackQuery, Message, URLInputFile
-from aiogram.types import InputMediaPhoto
+from aiogram import Bot
+from aiogram.types import CallbackQuery, InputMediaPhoto, Message
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from milk_bot.bot.db.models import Product
+from milk_bot.bot.services.photo_cache import resolve_product_photo
 
 
-def product_photo(p: Product) -> str | URLInputFile:
-    fid = p.photo_file_id
+async def product_photo_media(
+    bot: Bot,
+    session: AsyncSession,
+    product: Product,
+) -> str:
+    fid = await resolve_product_photo(bot, session, product)
     if not fid:
         raise ValueError("no_photo")
-    if fid.startswith("http://") or fid.startswith("https://"):
-        return URLInputFile(fid)
     return fid
 
 
@@ -21,6 +25,7 @@ async def show_product_card(
     text: str,
     reply_markup,
     product: Product,
+    session: AsyncSession,
     parse_mode: str = "HTML",
 ) -> None:
     message = target if isinstance(target, Message) else target.message
@@ -29,7 +34,7 @@ async def show_product_card(
     chat_id = message.chat.id
 
     try:
-        photo = product_photo(product)
+        photo = await product_photo_media(bot, session, product)
     except ValueError:
         if isinstance(target, CallbackQuery):
             await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)

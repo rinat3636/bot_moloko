@@ -114,7 +114,7 @@ async def cb_view_product(cq: CallbackQuery, session: AsyncSession, state: FSMCo
         f"Количество: <b>1</b>"
     )
     kb = product_qty_keyboard(pid, 1)
-    await show_product_card(cq, text=text, reply_markup=kb, product=p)
+    await show_product_card(cq, text=text, reply_markup=kb, product=p, session=session)
 
 
 @router.callback_query(ProductQtyStates.picking, F.data == "pq:m")
@@ -154,7 +154,7 @@ async def _refresh_product_card(
         f"Количество: <b>{qty}</b>"
     )
     kb = product_qty_keyboard(pid, qty)
-    await show_product_card(cq, text=text, reply_markup=kb, product=p)
+    await show_product_card(cq, text=text, reply_markup=kb, product=p, session=session)
 
 
 @router.callback_query(ProductQtyStates.picking, F.data == "pq:a")

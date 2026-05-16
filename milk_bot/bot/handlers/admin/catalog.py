@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 from decimal import Decimal, InvalidOperation
 
 from aiogram import F, Router
@@ -14,7 +15,9 @@ from milk_bot.bot.db.models import Category, Product
 from milk_bot.bot.filters.admin import AdminFilter
 from milk_bot.bot.services import catalog as catalog_service
 from milk_bot.bot.states.admin import AdminCategoryStates, AdminProductStates
+from milk_bot.bot.utils.catalog_ui import show_product_card
 from milk_bot.bot.utils.formatters import format_money
+from milk_bot.bot.utils.telegram_media import photo_file_id_from_message
 
 router = Router()
 
@@ -28,7 +31,11 @@ async def _catalog_home(message: Message, session: AsyncSession) -> None:
     b.row(InlineKeyboardButton(text="➕ Категория", callback_data="ac:cn"))
     b.row(InlineKeyboardButton(text="➕ Товар", callback_data="ac:pn"))
     b.row(InlineKeyboardButton(text="⬅️ Меню", callback_data="ad:hm"))
-    await message.edit_text("Каталог (категории):", reply_markup=b.as_markup())
+    await message.edit_text(
+        "Каталог (категории):\n"
+        "➕ Товар — своё название, цена, описание, фото.",
+        reply_markup=b.as_markup(),
+    )
 
 
 @router.callback_query(F.data == "ad:ct", AdminFilter())
@@ -143,7 +150,11 @@ async def admin_prod_name_prompt(cq: CallbackQuery, state: FSMContext) -> None:
     cid = int(cq.data.split(":")[2])
     await state.set_state(AdminProductStates.waiting_name)
     await state.update_data(category_id=cid)
-    await cq.message.edit_text("Введите название товара:\n\nОтмена: /cancel")
+    await cq.message.edit_text(
+        "Введите название товара:\n\n"
+        "Далее: цена → описание → фото (можно файлом-картинкой).\n\n"
+        "Отмена: /cancel",
+    )
 
 
 @router.message(AdminProductStates.waiting_name, F.text, AdminFilter())
@@ -174,7 +185,12 @@ async def admin_prod_photo_prompt(message: Message, state: FSMContext) -> None:
         desc = ""
     await state.update_data(description=desc)
     await state.set_state(AdminProductStates.waiting_photo)
-    await message.answer("Пришлите фото товара (или «-» чтобы пропустить):")
+    await message.answer(
+        "Пришлите <b>фото</b> товара (сжатое фото или файл-картинка)\n"
+        "или «-» без фото.\n\n"
+        "Отмена: /cancel",
+        parse_mode="HTML",
+    )
 
 
 @router.message(AdminProductStates.waiting_photo, AdminFilter())
@@ -183,11 +199,11 @@ async def admin_prod_save(message: Message, state: FSMContext, session: AsyncSes
     photo_id = None
     if message.text and message.text.strip() == "-":
         photo_id = None
-    elif message.photo:
-        photo_id = message.photo[-1].file_id
     else:
-        await message.answer("Нужно фото или «-».")
-        return
+        photo_id = photo_file_id_from_message(message)
+        if not photo_id:
+            await message.answer("Нужно фото (или файл-картинка) либо «-» без фото.")
+            return
     p = Product(
         category_id=int(data["category_id"]),
         name=data["name"],
@@ -197,8 +213,22 @@ async def admin_prod_save(message: Message, state: FSMContext, session: AsyncSes
         is_active=True,
     )
     session.add(p)
+    await session.flush()
     await state.clear()
-    await message.answer(f"Товар «{p.name}» создан. Цена: {format_money(p.price)}")
+    await message.answer(f"✅ Товар «{p.name}» создан. Цена: {format_money(p.price)}")
+    if p.photo_file_id:
+        preview = (
+            f"<b>{html.escape(p.name)}</b>\n"
+            f"Цена: {format_money(p.price)}\n"
+            f"<i>Превью для покупателей</i>"
+        )
+        await show_product_card(
+            message,
+            text=preview,
+            reply_markup=None,
+            product=p,
+            session=session,
+        )
 
 
 @router.callback_query(F.data.startswith("ac:pc:"), AdminFilter())
@@ -363,7 +393,8 @@ async def admin_prod_edit_photo_start(cq: CallbackQuery, state: FSMContext) -> N
     await state.set_state(AdminProductStates.waiting_edit_photo)
     await state.update_data(edit_product_id=pid)
     await cq.message.edit_text(
-        "Пришлите новое фото или «-» чтобы убрать фото:\n\nОтмена: /cancel",
+        "Пришлите новое фото (или файл-картинку)\n"
+        "или «-» чтобы убрать фото.\n\nОтмена: /cancel",
     )
 
 
@@ -380,11 +411,12 @@ async def admin_prod_edit_photo_save(
         return
     if message.text and message.text.strip() == "-":
         p.photo_file_id = None
-    elif message.photo:
-        p.photo_file_id = message.photo[-1].file_id
     else:
-        await message.answer("Нужно фото или «-».")
-        return
+        fid = photo_file_id_from_message(message)
+        if not fid:
+            await message.answer("Нужно фото (или файл-картинка) либо «-».")
+            return
+        p.photo_file_id = fid
     await state.clear()
     panel = await message.answer("Фото обновлено.")
     await _render_product_editor(panel, session, pid)

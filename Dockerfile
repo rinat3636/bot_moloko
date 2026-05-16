@@ -16,7 +16,7 @@ COPY . .
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-RUN mkdir -p /app/logs /app/data \
+RUN mkdir -p /app/logs /app/data /app/data/photo_cache \
     && chmod +x /app/scripts/docker-entrypoint.sh
 
 # Telegram polling bot — no HTTP port required
