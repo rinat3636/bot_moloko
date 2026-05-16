@@ -3,7 +3,7 @@ from __future__ import annotations
 from aiogram import Bot
 from loguru import logger
 
-from milk_bot.bot.config import get_settings
+from milk_bot.bot.config import get_admin_ids, get_settings
 from milk_bot.bot.db.models import Order
 from milk_bot.bot.keyboards.inline import admin_order_keyboard
 from milk_bot.bot.utils.formatters import format_money, order_lines_preview
@@ -30,7 +30,7 @@ async def notify_new_order(bot: Bot, order: Order) -> None:
         f"Итого: {format_money(order.total)}"
     )
     kb = admin_order_keyboard(order.id)
-    for aid in settings.admin_id_list():
+    for aid in get_admin_ids():
         try:
             await bot.send_message(aid, text, reply_markup=kb)
         except Exception as exc:  # noqa: BLE001
@@ -50,7 +50,7 @@ async def notify_admins_order_cancelled(bot: Bot, order: Order) -> None:
         f"👤 {order.full_name}, {order.phone}\n"
         f"📅 {order.delivery_date:%d.%m.%Y}, {order.delivery_slot}"
     )
-    for aid in settings.admin_id_list():
+    for aid in get_admin_ids():
         try:
             await bot.send_message(aid, text)
         except Exception as exc:  # noqa: BLE001

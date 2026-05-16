@@ -3,7 +3,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from milk_bot.bot.config import get_settings
+from milk_bot.bot.config import get_admin_ids, get_settings
 from milk_bot.bot.keyboards.reply import main_menu_keyboard
 from milk_bot.bot.utils.fsm import (
     clear_fsm_with_menu,
@@ -22,7 +22,7 @@ async def cb_ignore(cq: CallbackQuery) -> None:
 @router.message(Command("myid"))
 async def cmd_myid(message: Message) -> None:
     uid = message.from_user.id if message.from_user else 0
-    admins = get_settings().admin_id_list()
+    admins = get_admin_ids()
     access = "есть" if uid in admins else "нет"
     await message.answer(
         f"Ваш Telegram ID: <code>{uid}</code>\n"

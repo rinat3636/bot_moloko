@@ -37,7 +37,9 @@ def configure_logging() -> None:
 async def main() -> None:
     settings = get_settings()
     configure_logging()
-    admin_count = len(settings.admin_id_list())
+    from milk_bot.bot.config import get_admin_ids
+
+    admin_count = len(get_admin_ids())
     if admin_count:
         logger.info("ADMIN_IDS loaded: {} admin(s)", admin_count)
     else:
@@ -70,7 +72,9 @@ async def main() -> None:
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to notify user chat {}: {}", chat_id, exc)
-        admins = settings.admin_id_list()
+        from milk_bot.bot.config import get_admin_ids
+
+        admins = get_admin_ids()
         detail = (
             f"⚠️ Ошибка бота\n"
             f"chat_id={chat_id} user_id={user_id}\n"

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import re
 from functools import lru_cache
 from typing import List
 
@@ -45,20 +47,7 @@ class Settings(BaseSettings):
         return str(v).lower() in {"1", "true", "yes", "on"}
 
     def admin_id_list(self) -> List[int]:
-        raw = (self.admin_ids or "").strip()
-        if not raw:
-            return []
-        normalized = raw.replace(";", ",").replace("\n", ",")
-        out: List[int] = []
-        for part in normalized.split(","):
-            token = part.strip().strip('"').strip("'")
-            if not token:
-                continue
-            try:
-                out.append(int(token))
-            except ValueError:
-                logger.warning("ADMIN_IDS: пропущено значение {!r} (нужен числовой Telegram ID)", token)
-        return out
+        return parse_admin_ids(os.environ.get("ADMIN_IDS") or self.admin_ids or "")
 
     def delivery_slot_list(self) -> List[str]:
         return [s.strip() for s in self.delivery_slots.split(",") if s.strip()]
@@ -67,6 +56,40 @@ class Settings(BaseSettings):
         if not self.orders_chat_id or not str(self.orders_chat_id).strip():
             return None
         return int(str(self.orders_chat_id).strip())
+
+
+def parse_admin_ids(raw: str) -> List[int]:
+    text = (raw or "").strip()
+    if not text:
+        return []
+    # Одно число без запятых, либо список через , ; перенос строки
+    if re.fullmatch(r"\d+", text):
+        return [int(text)]
+    normalized = text.replace(";", ",").replace("\n", ",")
+    out: List[int] = []
+    for part in normalized.split(","):
+        token = part.strip().strip('"').strip("'")
+        if not token:
+            continue
+        try:
+            out.append(int(token))
+        except ValueError:
+            logger.warning(
+                "ADMIN_IDS: пропущено значение {!r} (нужен числовой Telegram ID)",
+                token,
+            )
+    return out
+
+
+def get_admin_ids() -> List[int]:
+    """Список админов: сначала из env (Railway), затем из настроек."""
+    for key in ("ADMIN_IDS", "ADMIN_ID", "TELEGRAM_ADMIN_IDS"):
+        val = os.environ.get(key, "").strip()
+        if val:
+            ids = parse_admin_ids(val)
+            if ids:
+                return ids
+    return get_settings().admin_id_list()
 
 
 @lru_cache

@@ -10,7 +10,7 @@ from aiogram.types import BufferedInputFile
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from milk_bot.bot.config import get_settings
+from milk_bot.bot.config import get_admin_ids, get_settings
 from milk_bot.bot.db.models import Product
 
 _CACHE_DIR = Path("data/photo_cache")
@@ -23,7 +23,7 @@ def _cache_chat_id() -> int | None:
     orders = settings.orders_chat_id_int()
     if orders is not None:
         return orders
-    admins = settings.admin_id_list()
+    admins = get_admin_ids()
     return admins[0] if admins else None
 
 
