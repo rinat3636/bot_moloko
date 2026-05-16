@@ -10,7 +10,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from loguru import logger
 from selectolax.parser import HTMLParser, Node
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -247,7 +247,11 @@ def import_products(session: Session, items: Iterable[dict]) -> tuple[int, int, 
     return inserted, updated, skipped
 
 
-async def run_import() -> None:
+def _category_count(session: Session) -> int:
+    return int(session.scalar(select(func.count()).select_from(Category)) or 0)
+
+
+async def run_import(*, if_empty: bool = False) -> None:
     import os
 
     os.environ.setdefault("BOT_TOKEN", "0:import")
@@ -256,6 +260,13 @@ async def run_import() -> None:
     logger.add(sys.stderr, level=settings.log_level)
     engine = create_engine(sync_url(), future=True)
     SessionLocal = sessionmaker(engine, expire_on_commit=False, class_=Session)
+
+    if if_empty:
+        with SessionLocal() as session:
+            n = _category_count(session)
+            if n > 0:
+                logger.info("Catalog already has {} categories — skip import", n)
+                return
 
     collected: list[dict] = []
     seen_pages: set[str] = set()
@@ -314,7 +325,16 @@ async def run_import() -> None:
 
 
 def main() -> None:
-    asyncio.run(run_import())
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Import product catalog from n-i.ru")
+    parser.add_argument(
+        "--if-empty",
+        action="store_true",
+        help="Skip import when categories already exist in the database",
+    )
+    args = parser.parse_args()
+    asyncio.run(run_import(if_empty=args.if_empty))
 
 
 if __name__ == "__main__":
