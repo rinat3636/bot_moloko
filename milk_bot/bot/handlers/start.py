@@ -3,7 +3,7 @@ from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from milk_bot.bot.config import get_admin_ids, get_settings, is_admin
+from milk_bot.bot.config import get_settings, is_admin
 from milk_bot.bot.keyboards.inline import admin_main_keyboard
 from milk_bot.bot.keyboards.reply import main_menu_keyboard
 from milk_bot.bot.utils.formatters import format_money
