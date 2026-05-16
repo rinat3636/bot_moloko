@@ -43,7 +43,7 @@ async def main() -> None:
     if admin_count:
         logger.info("ADMIN_IDS loaded: {} admin(s)", admin_count)
     else:
-        logger.warning("ADMIN_IDS is empty or invalid — /admin will not open")
+        logger.warning("ADMIN_IDS is empty or invalid — admin panel on /start disabled")
     bot = Bot(
         settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),

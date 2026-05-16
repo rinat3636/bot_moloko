@@ -3,7 +3,8 @@ from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from milk_bot.bot.config import get_settings
+from milk_bot.bot.config import get_admin_ids, get_settings
+from milk_bot.bot.keyboards.inline import admin_main_keyboard
 from milk_bot.bot.keyboards.reply import main_menu_keyboard
 from milk_bot.bot.utils.formatters import format_money
 
@@ -13,11 +14,17 @@ router = Router()
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext) -> None:
     await state.clear()
+    uid = message.from_user.id if message.from_user else 0
     await message.answer(
         "Здравствуйте! Доставка молочной продукции до двери.\n"
         "Выберите раздел в меню ниже.",
         reply_markup=main_menu_keyboard(),
     )
+    if uid in get_admin_ids():
+        await message.answer(
+            "Панель администратора:",
+            reply_markup=admin_main_keyboard(),
+        )
 
 
 @router.message(F.text == "ℹ️ О доставке")
