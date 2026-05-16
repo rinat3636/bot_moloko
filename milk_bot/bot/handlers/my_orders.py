@@ -10,18 +10,23 @@ from milk_bot.bot.config import is_admin
 from milk_bot.bot.handlers.common import block_if_busy_fsm
 from milk_bot.bot.services import notifier as notifier_service
 from milk_bot.bot.services import order as order_service
-from milk_bot.bot.utils.menu_keyboard import pin_main_menu
+from milk_bot.bot.keyboards.reply import admin_menu_keyboard, menu_keyboard_for
 
 router = Router()
 
 
 @router.message(F.text == "📦 Мои заказы")
 async def my_orders(message: Message, session: AsyncSession, state: FSMContext) -> None:
-    if is_admin(message.from_user.id if message.from_user else 0):
+    uid = message.from_user.id if message.from_user else 0
+    if is_admin(uid):
+        await message.answer(
+            "Вы администратор — раздел для покупателей.",
+            reply_markup=admin_menu_keyboard(),
+        )
         return
     if not await block_if_busy_fsm(message, state):
         return
-    await pin_main_menu(message)
+    await message.answer("📦 Мои заказы", reply_markup=menu_keyboard_for(uid))
     uid = message.from_user.id
     orders = await order_service.list_user_orders(session, uid, limit=10)
     if not orders:

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from milk_bot.bot.config import is_admin
 from milk_bot.bot.handlers.common import block_if_busy_fsm
-from milk_bot.bot.keyboards.reply import MAIN_MENU_TEXTS
+from milk_bot.bot.keyboards.reply import ADMIN_MENU_TEXTS, MAIN_MENU_TEXTS, admin_menu_keyboard, menu_keyboard_for
 from milk_bot.bot.keyboards.inline import (
     categories_keyboard,
     product_qty_keyboard,
@@ -25,12 +25,24 @@ from milk_bot.bot.utils.catalog_labels import (
 )
 from milk_bot.bot.utils.catalog_ui import show_product_card
 from milk_bot.bot.utils.formatters import format_money
-from milk_bot.bot.utils.menu_keyboard import pin_main_menu
 from milk_bot.bot.utils.product_display import format_product_card_caption
+from milk_bot.bot.utils.telegram_edit import edit_or_answer
 
 router = Router()
 PAGE_SIZE = 7
 SEARCH_PAGE_SIZE = 7
+
+
+async def _reject_admin_client_menu(message: Message) -> bool:
+    uid = message.from_user.id if message.from_user else 0
+    if not is_admin(uid):
+        return False
+    await message.answer(
+        "Вы в режиме администратора — каталог для покупателей отключён.\n"
+        "Используйте кнопки внизу или /start.",
+        reply_markup=admin_menu_keyboard(),
+    )
+    return True
 
 
 async def _prompt_search(message: Message, state: FSMContext) -> None:
@@ -64,8 +76,8 @@ async def _render_search_results(
     kb = search_results_keyboard(page, total, SEARCH_PAGE_SIZE, products)
     await state.set_state(SearchStates.browsing)
     await state.update_data(search_q=query, search_page=page)
-    if edit and message.text is not None:
-        await message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    if edit:
+        await edit_or_answer(message, text, reply_markup=kb, parse_mode="HTML")
     else:
         await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
@@ -74,17 +86,20 @@ async def _render_categories(message: Message, session: AsyncSession, *, edit: b
     cats = await catalog_service.list_categories(session, active_only=True)
     if not cats:
         text = "Каталог пока пуст. Администратор скоро добавит товары."
-        if edit and message.text is not None:
-            await message.edit_text(text)
+        uid = message.from_user.id if message.from_user else 0
+        if edit:
+            await edit_or_answer(message, text)
         else:
-            await message.answer(text)
+            await message.answer(text, reply_markup=menu_keyboard_for(uid))
         return
     text = "Выберите категорию:"
     kb = categories_keyboard(cats)
-    if edit and message.text is not None:
-        await message.edit_text(text, reply_markup=kb)
+    if edit:
+        await edit_or_answer(message, text, reply_markup=kb)
     else:
+        uid = message.from_user.id if message.from_user else 0
         await message.answer(text, reply_markup=kb)
+        await message.answer("Меню внизу 👇", reply_markup=menu_keyboard_for(uid))
 
 
 async def _render_products_list(
@@ -95,7 +110,7 @@ async def _render_products_list(
 ) -> None:
     total = await catalog_service.count_products_in_category(session, category_id)
     if total == 0:
-        await message.edit_text("В этой категории пока нет активных товаров.")
+        await edit_or_answer(message, "В этой категории пока нет активных товаров.")
         return
     pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
     page = max(0, min(page, pages - 1))
@@ -109,28 +124,28 @@ async def _render_products_list(
         products, title=title, page=page, pages=pages
     )
     kb = products_keyboard(category_id, page, total, PAGE_SIZE, products)
-    await message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await edit_or_answer(message, text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.message(F.text == "🥛 Каталог")
 async def open_catalog(message: Message, session: AsyncSession, state: FSMContext) -> None:
-    if is_admin(message.from_user.id if message.from_user else 0):
+    if await _reject_admin_client_menu(message):
         return
     if not await block_if_busy_fsm(message, state):
         return
     await state.clear()
-    await pin_main_menu(message)
     await _render_categories(message, session, edit=False)
 
 
 @router.message(F.text == "🔍 Поиск")
 async def open_search(message: Message, session: AsyncSession, state: FSMContext) -> None:
-    if is_admin(message.from_user.id if message.from_user else 0):
+    if await _reject_admin_client_menu(message):
         return
     if not await block_if_busy_fsm(message, state):
         return
     await state.clear()
-    await pin_main_menu(message)
+    uid = message.from_user.id if message.from_user else 0
+    await message.answer("🔍 Поиск", reply_markup=menu_keyboard_for(uid))
     await _prompt_search(message, state)
 
 
@@ -140,7 +155,7 @@ async def cb_search_ask(cq: CallbackQuery, session: AsyncSession, state: FSMCont
         return
     await cq.answer()
     await state.clear()
-    await pin_main_menu(cq.message)
+    assert cq.message is not None
     await _prompt_search(cq.message, state)
 
 
@@ -149,6 +164,9 @@ async def search_query_entered(
     message: Message, session: AsyncSession, state: FSMContext
 ) -> None:
     text = (message.text or "").strip()
+    if text in ADMIN_MENU_TEXTS:
+        await state.clear()
+        return
     if text in MAIN_MENU_TEXTS:
         await state.clear()
         if text == "🥛 Каталог":
@@ -169,7 +187,7 @@ async def search_query_entered(
     await _render_search_results(message, session, state, query, 0, edit=False)
 
 
-@router.callback_query(SearchStates.browsing, F.data.startswith("sp:"))
+@router.callback_query(F.data.startswith("sp:"))
 async def cb_search_page(cq: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
     if not await block_if_busy_fsm(cq, state):
         return

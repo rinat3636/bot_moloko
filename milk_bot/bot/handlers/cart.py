@@ -14,7 +14,7 @@ from milk_bot.bot.keyboards.inline import cart_keyboard
 from milk_bot.bot.services import catalog as catalog_service
 from milk_bot.bot.services import cart as cart_service
 from milk_bot.bot.utils.formatters import format_money
-from milk_bot.bot.utils.menu_keyboard import pin_main_menu
+from milk_bot.bot.keyboards.reply import admin_menu_keyboard, menu_keyboard_for
 
 router = Router()
 
@@ -67,13 +67,18 @@ async def _show_cart(target: Message, session: AsyncSession, user_id: int, *, ed
 
 @router.message(F.text == "🛒 Корзина")
 async def open_cart(message: Message, session: AsyncSession, state: FSMContext) -> None:
-    if is_admin(message.from_user.id if message.from_user else 0):
+    uid = message.from_user.id if message.from_user else 0
+    if is_admin(uid):
+        await message.answer(
+            "Вы администратор — корзина для покупателей.",
+            reply_markup=admin_menu_keyboard(),
+        )
         return
     if not await block_if_busy_fsm(message, state):
         return
     await state.clear()
-    await pin_main_menu(message)
-    await _show_cart(message, session, message.from_user.id, edit=False)
+    await message.answer("🛒 Корзина", reply_markup=menu_keyboard_for(uid))
+    await _show_cart(message, session, uid, edit=False)
 
 
 @router.callback_query(F.data.startswith("cr:"))
