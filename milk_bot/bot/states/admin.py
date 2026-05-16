@@ -8,3 +8,7 @@ class AdminBroadcastStates(StatesGroup):
 
 class AdminProductStates(StatesGroup):
     waiting_edit_price = State()
+
+
+class AdminContactReplyStates(StatesGroup):
+    waiting_text = State()

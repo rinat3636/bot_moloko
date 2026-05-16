@@ -154,6 +154,17 @@ def admin_main_keyboard() -> InlineKeyboardMarkup:
     return b.as_markup()
 
 
+def admin_contact_reply_keyboard(client_user_id: int) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.row(
+        InlineKeyboardButton(
+            text="💬 Ответить клиенту",
+            callback_data=f"cr:{client_user_id}",
+        )
+    )
+    return b.as_markup()
+
+
 def admin_order_keyboard(order_id: int) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.row(

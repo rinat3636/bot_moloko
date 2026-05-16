@@ -1,9 +1,18 @@
 from aiogram import Router
 
-from milk_bot.bot.handlers.admin import broadcast, catalog, menu, orders, reply_menu, stats
+from milk_bot.bot.handlers.admin import (
+    broadcast,
+    catalog,
+    contact_reply,
+    menu,
+    orders,
+    reply_menu,
+    stats,
+)
 
 router = Router()
 router.include_router(reply_menu.router)
+router.include_router(contact_reply.router)
 router.include_router(menu.router)
 router.include_router(orders.router)
 router.include_router(catalog.router)

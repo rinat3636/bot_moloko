@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot, F, Router
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -218,13 +219,18 @@ async def admin_reject(cq: CallbackQuery, session: AsyncSession, bot: Bot) -> No
 
 
 @router.callback_query(F.data.startswith("ao:c:"), AdminFilter())
-async def admin_contact(cq: CallbackQuery, session: AsyncSession) -> None:
+async def admin_contact(
+    cq: CallbackQuery, session: AsyncSession, state: FSMContext
+) -> None:
+    from milk_bot.bot.handlers.admin.contact_reply import _start_reply_to_client
+
     oid = int(cq.data.split(":")[2])
     o = await order_service.get_order(session, oid)
     if not o:
         await cq.answer("Заказ не найден", show_alert=True)
         return
-    await cq.answer(
-        f"Клиент: {o.full_name}\nТелефон: {o.phone}\nUser ID: {o.user_id}",
-        show_alert=True,
+    await cq.answer()
+    label = f"{o.full_name}, {o.phone}"
+    await _start_reply_to_client(
+        cq, state, client_user_id=o.user_id, client_label=label
     )
