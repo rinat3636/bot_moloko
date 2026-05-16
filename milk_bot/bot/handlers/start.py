@@ -5,8 +5,8 @@ from aiogram.types import Message
 
 from milk_bot.bot.config import get_settings, is_admin
 from milk_bot.bot.keyboards.inline import admin_main_keyboard
-from milk_bot.bot.keyboards.reply import main_menu_keyboard
 from milk_bot.bot.utils.formatters import format_money
+from milk_bot.bot.utils.menu_keyboard import answer_with_main_menu
 
 router = Router()
 
@@ -17,26 +17,30 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     uid = message.from_user.id if message.from_user else 0
     user_is_admin = is_admin(uid)
 
+    welcome = (
+        "Здравствуйте! Доставка молочной продукции до двери.\n"
+        + (
+            "Кнопки <b>внизу экрана</b> — каталог, поиск, корзина."
+            if user_is_admin
+            else "Выберите раздел в меню <b>внизу экрана</b>."
+        )
+    )
+    await answer_with_main_menu(
+        message,
+        welcome,
+        parse_mode="HTML",
+    )
+
     if user_is_admin:
         await message.answer(
             "<b>Панель администратора</b>\n\n"
-            "Кнопки <b>в этом сообщении</b> (не внизу экрана):\n"
+            "Кнопки <b>в этом сообщении</b> (не внизу):\n"
             "📦 Заказы · 💰 Цены · 📊 Статистика · 📢 Рассылка\n\n"
-            "Открыть снова — отправьте /start",
+            "Снова открыть — /start",
             reply_markup=admin_main_keyboard(),
             parse_mode="HTML",
         )
 
-    await message.answer(
-        "Здравствуйте! Доставка молочной продукции до двери.\n"
-        + (
-            "Меню <b>внизу</b> — для заказов (как у покупателей)."
-            if user_is_admin
-            else "Выберите раздел в меню ниже."
-        ),
-        reply_markup=main_menu_keyboard(),
-        parse_mode="HTML" if user_is_admin else None,
-    )
 
 @router.message(F.text == "ℹ️ О доставке")
 async def about_delivery(message: Message, state: FSMContext) -> None:

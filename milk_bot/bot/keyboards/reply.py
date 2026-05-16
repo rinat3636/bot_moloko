@@ -26,6 +26,8 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="📞 Контакты")],
         ],
         resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Каталог · поиск · корзина",
     )
 
 

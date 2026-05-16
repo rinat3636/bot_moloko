@@ -24,6 +24,7 @@ from milk_bot.bot.services import payment_yookassa
 from milk_bot.bot.states.order import OrderCheckoutStates
 from milk_bot.bot.utils.formatters import format_money
 from milk_bot.bot.utils.order_checkout import is_allowed_delivery_date, is_allowed_delivery_slot
+from milk_bot.bot.utils.menu_keyboard import answer_with_main_menu
 from milk_bot.bot.utils.validators import parse_checkout_contacts
 
 router = Router()
@@ -79,6 +80,7 @@ async def cb_cancel_inline(cq: CallbackQuery, state: FSMContext) -> None:
     await cq.answer()
     await state.clear()
     await cq.message.edit_text("Оформление отменено.")
+    await answer_with_main_menu(cq.message, "Меню внизу обновлено.")
 
 
 @router.message(OrderCheckoutStates.waiting_contacts, F.text)
@@ -245,4 +247,8 @@ async def step_confirm_ok(
     if order.total == 0:
         text += "\n\nСумма уточняется — цены в каталоге обновляются."
     await cq.message.edit_text(text)
+    await answer_with_main_menu(
+        cq.message,
+        "Меню внизу обновлено — можно продолжить покупки.",
+    )
     await notifier_service.notify_new_order(bot, order)

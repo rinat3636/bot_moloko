@@ -3,13 +3,13 @@ from __future__ import annotations
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from milk_bot.bot.keyboards.reply import main_menu_keyboard
+from milk_bot.bot.utils.menu_keyboard import answer_with_main_menu
 
 
 async def clear_fsm_with_menu(message: Message, state: FSMContext, *, notice: str | None = None) -> None:
     await state.clear()
     text = notice or "Действие отменено."
-    await message.answer(text, reply_markup=main_menu_keyboard())
+    await answer_with_main_menu(message, text)
 
 
 def is_checkout_state(state_str: str | None) -> bool:

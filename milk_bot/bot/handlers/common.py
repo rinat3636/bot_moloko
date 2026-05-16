@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from milk_bot.bot.keyboards.reply import main_menu_keyboard
+from milk_bot.bot.utils.menu_keyboard import answer_with_main_menu
 from milk_bot.bot.utils.fsm import (
     clear_fsm_with_menu,
     is_admin_fsm_state,
@@ -28,7 +29,7 @@ async def cb_ignore(cq: CallbackQuery) -> None:
 async def cmd_cancel_global(message: Message, state: FSMContext) -> None:
     current = await state.get_state()
     if not current:
-        await message.answer("Нечего отменять.", reply_markup=main_menu_keyboard())
+        await answer_with_main_menu(message, "Нечего отменять.")
         return
     if is_checkout_state(current):
         notice = "Оформление заказа отменено."
