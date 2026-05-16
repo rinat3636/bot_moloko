@@ -3,13 +3,13 @@ from __future__ import annotations
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from milk_bot.bot.utils.menu_keyboard import answer_with_main_menu
+from milk_bot.bot.utils.menu_keyboard import answer_with_menu
 
 
 async def clear_fsm_with_menu(message: Message, state: FSMContext, *, notice: str | None = None) -> None:
     await state.clear()
     text = notice or "Действие отменено."
-    await answer_with_main_menu(message, text)
+    await answer_with_menu(message, text)
 
 
 def is_checkout_state(state_str: str | None) -> bool:
@@ -67,7 +67,10 @@ async def block_if_busy_fsm(
     if isinstance(event, CallbackQuery):
         await event.answer(busy_notice, show_alert=True)
     else:
-        await event.answer(busy_notice, reply_markup=main_menu_keyboard())
+        from milk_bot.bot.keyboards.reply import menu_keyboard_for
+
+        uid = event.from_user.id if event.from_user else 0
+        await event.answer(busy_notice, reply_markup=menu_keyboard_for(uid))
     return False
 
 

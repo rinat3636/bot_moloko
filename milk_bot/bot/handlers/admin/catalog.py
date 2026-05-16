@@ -19,18 +19,37 @@ from milk_bot.bot.utils.fsm import clear_state_if_set
 router = Router()
 
 
-async def _catalog_home(message: Message, session: AsyncSession) -> None:
+def _prices_text() -> str:
+    return (
+        "💰 <b>Цены</b>\n\n"
+        "Названия, фото и описания подтягиваются с сайта n-i.ru "
+        "(обновление раз в сутки). На сайте <b>цен нет</b>.\n"
+        "Здесь вы задаёте <b>цены</b> для бота."
+    )
+
+
+async def _prices_keyboard(session: AsyncSession) -> InlineKeyboardBuilder:
     cats = await catalog_service.list_categories(session)
     b = InlineKeyboardBuilder()
     for c in cats:
         b.add(InlineKeyboardButton(text=c.name, callback_data=f"ac:cg:{c.id}"))
     b.adjust(2)
-    b.row(InlineKeyboardButton(text="⬅️ Меню", callback_data="ad:hm"))
+    return b
+
+
+async def open_prices_menu(message: Message, session: AsyncSession) -> None:
+    b = await _prices_keyboard(session)
+    await message.answer(
+        _prices_text(),
+        reply_markup=b.as_markup(),
+        parse_mode="HTML",
+    )
+
+
+async def _catalog_home(message: Message, session: AsyncSession) -> None:
+    b = await _prices_keyboard(session)
     await message.edit_text(
-        "💰 <b>Цены</b>\n\n"
-        "Названия, фото и описания подтягиваются с сайта n-i.ru "
-        "(обновление раз в сутки). На сайте <b>цен нет</b>.\n"
-        "Здесь вы задаёте <b>цены</b> для бота.",
+        _prices_text(),
         reply_markup=b.as_markup(),
         parse_mode="HTML",
     )

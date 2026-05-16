@@ -24,9 +24,7 @@ def _revenue(rows: list[Order]) -> Decimal:
     return t.quantize(Decimal("0.01"))
 
 
-@router.callback_query(F.data == "ad:st", AdminFilter())
-async def admin_stats(cq: CallbackQuery, session: AsyncSession) -> None:
-    await cq.answer()
+async def build_stats_text(session: AsyncSession) -> str:
     res = await session.execute(select(Order))
     all_o = list(res.scalars().all())
     tz = ZoneInfo(get_settings().timezone)
@@ -59,12 +57,26 @@ async def admin_stats(cq: CallbackQuery, session: AsyncSession) -> None:
     )
     top_lines = "\n".join(f"{n}: {int(q)}" for n, q in top.all()) or "—"
 
-    text = (
+    return (
+        f"📊 <b>Статистика</b>\n\n"
         f"За 24ч: заказов {len(d1)}, сумма {_revenue(d1)} ₽\n"
         f"За 7 дней: {len(d7)}, сумма {_revenue(d7)} ₽\n"
         f"За 30 дней: {len(d30)}, сумма {_revenue(d30)} ₽\n\n"
         f"Топ товаров:\n{top_lines}"
     )
+
+
+async def send_stats_report(message: Message, session: AsyncSession) -> None:
+    await message.answer(await build_stats_text(session), parse_mode="HTML")
+
+
+@router.callback_query(F.data == "ad:st", AdminFilter())
+async def admin_stats(cq: CallbackQuery, session: AsyncSession) -> None:
+    await cq.answer()
     b = InlineKeyboardBuilder()
     b.row(InlineKeyboardButton(text="⬅️ Меню", callback_data="ad:hm"))
-    await cq.message.edit_text(text, reply_markup=b.as_markup())
+    await cq.message.edit_text(
+        await build_stats_text(session),
+        reply_markup=b.as_markup(),
+        parse_mode="HTML",
+    )

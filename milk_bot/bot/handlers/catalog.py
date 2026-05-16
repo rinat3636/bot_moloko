@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from milk_bot.bot.config import is_admin
 from milk_bot.bot.handlers.common import block_if_busy_fsm
 from milk_bot.bot.keyboards.reply import MAIN_MENU_TEXTS
 from milk_bot.bot.keyboards.inline import (
@@ -113,6 +114,8 @@ async def _render_products_list(
 
 @router.message(F.text == "🥛 Каталог")
 async def open_catalog(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    if is_admin(message.from_user.id if message.from_user else 0):
+        return
     if not await block_if_busy_fsm(message, state):
         return
     await state.clear()
@@ -122,6 +125,8 @@ async def open_catalog(message: Message, session: AsyncSession, state: FSMContex
 
 @router.message(F.text == "🔍 Поиск")
 async def open_search(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    if is_admin(message.from_user.id if message.from_user else 0):
+        return
     if not await block_if_busy_fsm(message, state):
         return
     await state.clear()

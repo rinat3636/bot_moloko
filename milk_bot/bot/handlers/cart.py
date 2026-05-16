@@ -8,6 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from milk_bot.bot.config import is_admin
 from milk_bot.bot.handlers.common import block_if_busy_fsm
 from milk_bot.bot.keyboards.inline import cart_keyboard
 from milk_bot.bot.services import catalog as catalog_service
@@ -66,6 +67,8 @@ async def _show_cart(target: Message, session: AsyncSession, user_id: int, *, ed
 
 @router.message(F.text == "🛒 Корзина")
 async def open_cart(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    if is_admin(message.from_user.id if message.from_user else 0):
+        return
     if not await block_if_busy_fsm(message, state):
         return
     await state.clear()

@@ -77,6 +77,13 @@ async def _render_orders_list(
     )
 
 
+async def open_orders_menu(message: Message, session: AsyncSession) -> None:
+    await message.answer(
+        "Заказы — выберите фильтр:",
+        reply_markup=_orders_filter_keyboard().as_markup(),
+    )
+
+
 @router.callback_query(F.data == "ad:or", AdminFilter())
 async def admin_orders_home(cq: CallbackQuery, session: AsyncSession) -> None:
     await cq.answer()

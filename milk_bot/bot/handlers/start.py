@@ -4,10 +4,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from milk_bot.bot.config import get_settings, is_admin
-from milk_bot.bot.keyboards.inline import admin_main_keyboard
 from milk_bot.bot.utils.formatters import format_money
-from milk_bot.bot.keyboards.reply import main_menu_keyboard
-from milk_bot.bot.utils.menu_keyboard import answer_with_main_menu
+from milk_bot.bot.utils.menu_keyboard import answer_with_menu
 
 router = Router()
 
@@ -16,38 +14,32 @@ router = Router()
 async def cmd_start(message: Message, state: FSMContext) -> None:
     await state.clear()
     uid = message.from_user.id if message.from_user else 0
-    user_is_admin = is_admin(uid)
 
-    welcome = (
-        "Здравствуйте! Доставка молочной продукции до двери.\n"
-        + (
-            "Кнопки <b>внизу экрана</b> — каталог, поиск, корзина."
-            if user_is_admin
-            else "Выберите раздел в меню <b>внизу экрана</b>."
-        )
-    )
-    await answer_with_main_menu(
-        message,
-        welcome,
-        parse_mode="HTML",
-    )
-
-    if user_is_admin:
-        await message.answer(
-            "<b>Панель администратора</b>\n\n"
-            "Кнопки <b>в этом сообщении</b> (не внизу):\n"
-            "📦 Заказы · 💰 Цены · 📊 Статистика · 📢 Рассылка\n\n"
-            "Снова открыть — /start",
-            reply_markup=admin_main_keyboard(),
+    if is_admin(uid):
+        await answer_with_menu(
+            message,
+            "Режим <b>администратора</b>.\n\n"
+            "Внизу: заказы, цены, статистика, рассылка.\n"
+            "Покупательское меню (каталог, корзина) вам не показывается.",
             parse_mode="HTML",
         )
+        return
+
+    await answer_with_menu(
+        message,
+        "Здравствуйте! Доставка молочной продукции до двери.\n"
+        "Выберите раздел в меню ниже.",
+    )
 
 
 @router.message(F.text == "ℹ️ О доставке")
 async def about_delivery(message: Message, state: FSMContext) -> None:
     from milk_bot.bot.handlers.common import block_if_busy_fsm
+    from milk_bot.bot.keyboards.reply import menu_keyboard_for
 
     if not await block_if_busy_fsm(message, state):
+        return
+    if is_admin(message.from_user.id if message.from_user else 0):
         return
     settings = get_settings()
     lines = [
@@ -71,15 +63,18 @@ async def about_delivery(message: Message, state: FSMContext) -> None:
     await message.answer(
         "\n".join(lines),
         parse_mode="HTML",
-        reply_markup=main_menu_keyboard(),
+        reply_markup=menu_keyboard_for(message.from_user.id if message.from_user else 0),
     )
 
 
 @router.message(F.text == "📞 Контакты")
 async def contacts(message: Message, state: FSMContext) -> None:
     from milk_bot.bot.handlers.common import block_if_busy_fsm
+    from milk_bot.bot.keyboards.reply import menu_keyboard_for
 
     if not await block_if_busy_fsm(message, state):
+        return
+    if is_admin(message.from_user.id if message.from_user else 0):
         return
     await message.answer(
         "📞 <b>Контакты</b>\n\n"
@@ -87,5 +82,5 @@ async def contacts(message: Message, state: FSMContext) -> None:
         "мы ответим по статусу доставки и составу заказа.\n\n"
         "Срочные вопросы — через управляющую компанию вашего дома.",
         parse_mode="HTML",
-        reply_markup=main_menu_keyboard(),
+        reply_markup=menu_keyboard_for(message.from_user.id if message.from_user else 0),
     )

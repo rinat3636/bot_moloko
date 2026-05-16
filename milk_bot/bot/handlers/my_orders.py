@@ -6,6 +6,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from milk_bot.bot.config import is_admin
 from milk_bot.bot.handlers.common import block_if_busy_fsm
 from milk_bot.bot.services import notifier as notifier_service
 from milk_bot.bot.services import order as order_service
@@ -16,6 +17,8 @@ router = Router()
 
 @router.message(F.text == "📦 Мои заказы")
 async def my_orders(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    if is_admin(message.from_user.id if message.from_user else 0):
+        return
     if not await block_if_busy_fsm(message, state):
         return
     await pin_main_menu(message)

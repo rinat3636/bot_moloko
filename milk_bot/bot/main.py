@@ -62,8 +62,7 @@ async def main() -> None:
                 await bot.send_message(
                     aid,
                     "✅ <b>Бот запущен</b>\n\n"
-                    "Панель администратора — после /start "
-                    "(кнопки в сообщении, не внизу экрана).\n"
+                    "Режим администратора — /start, кнопки управления <b>внизу</b>.\n"
                     f"Ваш ID в ADMIN_IDS: <code>{aid}</code>",
                     parse_mode=ParseMode.HTML,
                 )
