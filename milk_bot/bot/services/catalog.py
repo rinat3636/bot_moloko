@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -52,6 +52,55 @@ async def list_products_page(
             Product.is_active.is_(True),
         )
         .order_by(Product.id)
+        .offset(offset)
+        .limit(limit)
+    )
+    return list(res.scalars().all())
+
+
+def _search_term_filters(query: str):
+    terms = [t.strip() for t in query.split() if len(t.strip()) >= 2]
+    if not terms and len(query.strip()) >= 2:
+        terms = [query.strip()]
+    if not terms:
+        return None
+    clauses = []
+    for term in terms:
+        pattern = f"%{term}%"
+        clauses.append(
+            or_(
+                Product.name.ilike(pattern),
+                Product.description.ilike(pattern),
+            )
+        )
+    return and_(*clauses)
+
+
+async def count_search_products(session: AsyncSession, query: str) -> int:
+    filters = _search_term_filters(query)
+    if filters is None:
+        return 0
+    q = await session.execute(
+        select(func.count())
+        .select_from(Product)
+        .where(Product.is_active.is_(True), filters)
+    )
+    return int(q.scalar_one())
+
+
+async def search_products_page(
+    session: AsyncSession,
+    query: str,
+    offset: int,
+    limit: int,
+) -> list[Product]:
+    filters = _search_term_filters(query)
+    if filters is None:
+        return []
+    res = await session.execute(
+        select(Product)
+        .where(Product.is_active.is_(True), filters)
+        .order_by(Product.name)
         .offset(offset)
         .limit(limit)
     )

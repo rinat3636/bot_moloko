@@ -8,21 +8,64 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from milk_bot.bot.handlers.common import block_if_busy_fsm
+from milk_bot.bot.keyboards.reply import MAIN_MENU_TEXTS
 from milk_bot.bot.keyboards.inline import (
     categories_keyboard,
     product_qty_keyboard,
     products_keyboard,
+    search_results_keyboard,
 )
 from milk_bot.bot.services import catalog as catalog_service
 from milk_bot.bot.services import cart as cart_service
-from milk_bot.bot.states.catalog import ProductQtyStates
-from milk_bot.bot.utils.catalog_labels import format_category_products_message
+from milk_bot.bot.states.catalog import ProductQtyStates, SearchStates
+from milk_bot.bot.utils.catalog_labels import (
+    format_category_products_message,
+    format_search_results_message,
+)
 from milk_bot.bot.utils.catalog_ui import show_product_card
 from milk_bot.bot.utils.formatters import format_money
 from milk_bot.bot.utils.product_display import format_product_card_caption
 
 router = Router()
 PAGE_SIZE = 7
+SEARCH_PAGE_SIZE = 7
+
+
+async def _prompt_search(message: Message, state: FSMContext) -> None:
+    await state.set_state(SearchStates.waiting_query)
+    await message.answer(
+        "Введите <b>одно слово</b> или фразу — как удобно.\n"
+        "Например: <b>молоко</b>, <b>кефир</b>, <b>творог 5%</b>.\n\n"
+        "Нужно хотя бы <b>2 буквы</b> (не два слова). Отмена: /cancel",
+        parse_mode="HTML",
+    )
+
+
+async def _render_search_results(
+    message: Message,
+    session: AsyncSession,
+    state: FSMContext,
+    query: str,
+    page: int,
+    *,
+    edit: bool,
+) -> None:
+    total = await catalog_service.count_search_products(session, query)
+    pages = max(1, (total + SEARCH_PAGE_SIZE - 1) // SEARCH_PAGE_SIZE) if total else 1
+    page = max(0, min(page, pages - 1))
+    products = await catalog_service.search_products_page(
+        session, query, page * SEARCH_PAGE_SIZE, SEARCH_PAGE_SIZE
+    )
+    text = format_search_results_message(
+        products, query=query, page=page, pages=pages, total=total
+    )
+    kb = search_results_keyboard(page, total, SEARCH_PAGE_SIZE, products)
+    await state.set_state(SearchStates.browsing)
+    await state.update_data(search_q=query, search_page=page)
+    if edit and message.text is not None:
+        await message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    else:
+        await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 async def _render_categories(message: Message, session: AsyncSession, *, edit: bool = False) -> None:
@@ -75,6 +118,63 @@ async def open_catalog(message: Message, session: AsyncSession, state: FSMContex
     await _render_categories(message, session, edit=False)
 
 
+@router.message(F.text == "🔍 Поиск")
+async def open_search(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    if not await block_if_busy_fsm(message, state):
+        return
+    await state.clear()
+    await _prompt_search(message, state)
+
+
+@router.callback_query(F.data == "sr:ask")
+async def cb_search_ask(cq: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
+    if not await block_if_busy_fsm(cq, state):
+        return
+    await cq.answer()
+    await state.clear()
+    await _prompt_search(cq.message, state)
+
+
+@router.message(SearchStates.waiting_query, F.text)
+async def search_query_entered(
+    message: Message, session: AsyncSession, state: FSMContext
+) -> None:
+    text = (message.text or "").strip()
+    if text in MAIN_MENU_TEXTS:
+        await state.clear()
+        if text == "🥛 Каталог":
+            await _render_categories(message, session, edit=False)
+        elif text == "🔍 Поиск":
+            await _prompt_search(message, state)
+        elif text == "🛒 Корзина":
+            from milk_bot.bot.handlers.cart import _show_cart
+
+            await _show_cart(message, session, message.from_user.id, edit=False)
+        return
+    query = text
+    if len(query) < 2:
+        await message.answer(
+            "Слишком коротко. Введите хотя бы 2 буквы — например «молоко»."
+        )
+        return
+    await _render_search_results(message, session, state, query, 0, edit=False)
+
+
+@router.callback_query(SearchStates.browsing, F.data.startswith("sp:"))
+async def cb_search_page(cq: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
+    if not await block_if_busy_fsm(cq, state):
+        return
+    await cq.answer()
+    page = int(cq.data.split(":")[1])
+    data = await state.get_data()
+    query = str(data.get("search_q", "")).strip()
+    if not query:
+        await state.clear()
+        await _render_categories(cq.message, session, edit=True)
+        return
+    await _render_search_results(cq.message, session, state, query, page, edit=True)
+
+
 @router.callback_query(F.data == "ct:l")
 async def cb_cat_list(cq: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
     if not await block_if_busy_fsm(cq, state):
@@ -111,15 +211,25 @@ async def cb_view_product(cq: CallbackQuery, session: AsyncSession, state: FSMCo
         return
     parts = cq.data.split(":")
     pid = int(parts[1])
-    cid = int(parts[2]) if len(parts) > 2 else 0
+    ctx = parts[2] if len(parts) > 2 else "0"
     page = int(parts[3]) if len(parts) > 3 else 0
+    from_search = ctx == "s"
+    cid = 0 if from_search else int(ctx)
     p = await catalog_service.get_product(session, pid)
     if not p or not p.is_active:
         await cq.answer("Товар недоступен", show_alert=True)
         return
     await cq.answer()
+    prev = await state.get_data()
     await state.set_state(ProductQtyStates.picking)
-    await state.update_data(pid=pid, qty=1, cid=cid, page=page)
+    await state.update_data(
+        pid=pid,
+        qty=1,
+        cid=cid,
+        page=page,
+        from_search=from_search,
+        search_q=prev.get("search_q", "") if from_search else prev.get("search_q"),
+    )
     text = format_product_card_caption(p, 1)
     kb = product_qty_keyboard(pid, 1)
     await show_product_card(cq, text=text, reply_markup=kb, product=p, session=session)
@@ -188,12 +298,23 @@ async def cb_add_cart(cq: CallbackQuery, state: FSMContext, session: AsyncSessio
 async def cb_product_back(cq: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
     await cq.answer()
     data = await state.get_data()
+    from_search = bool(data.get("from_search"))
     cid = int(data.get("cid", 0))
     page = int(data.get("page", 0))
+    search_q = str(data.get("search_q", "")).strip()
+    chat_id = cq.message.chat.id
+    if from_search and search_q:
+        if cq.message.photo:
+            await cq.message.delete()
+            msg = await cq.bot.send_message(chat_id, "🔍")
+            await _render_search_results(msg, session, state, search_q, page, edit=False)
+        else:
+            await _render_search_results(cq.message, session, state, search_q, page, edit=True)
+        return
     await state.clear()
     if cq.message.photo:
         await cq.message.delete()
-        msg = await cq.bot.send_message(cq.message.chat.id, "Каталог")
+        msg = await cq.bot.send_message(chat_id, "Каталог")
         await _render_products_list(msg, session, cid, page)
     else:
         await _render_products_list(cq.message, session, cid, page)

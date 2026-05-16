@@ -63,3 +63,26 @@ def format_category_products_message(
         lines.append(f"{i}. {html.escape(p.name)} — {format_money(p.price)}")
     lines.extend(["", "Выберите товар по номеру:"])
     return "\n".join(lines)
+
+
+def format_search_results_message(
+    products: list[Product],
+    *,
+    query: str,
+    page: int,
+    pages: int,
+    total: int,
+) -> str:
+    q = html.escape(query)
+    lines = [
+        f"<b>🔍 Поиск:</b> {q}",
+        f"Найдено: {total} · стр. {page + 1} из {pages}",
+        "",
+    ]
+    if not products:
+        lines.append("Ничего не найдено. Попробуйте другое слово (например «молоко», «кефир»).")
+        return "\n".join(lines)
+    for i, p in enumerate(products, start=1):
+        lines.append(f"{i}. {html.escape(p.name)} — {format_money(p.price)}")
+    lines.extend(["", "Выберите товар:"])
+    return "\n".join(lines)

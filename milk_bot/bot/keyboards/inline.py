@@ -16,6 +16,31 @@ def categories_keyboard(categories: list[Category]) -> InlineKeyboardMarkup:
     for c in categories:
         b.add(InlineKeyboardButton(text=c.name, callback_data=f"ct:{c.id}"))
     b.adjust(2)
+    b.row(InlineKeyboardButton(text="🔍 Поиск по каталогу", callback_data="sr:ask"))
+    return b.as_markup()
+
+
+def search_results_keyboard(
+    page: int,
+    total: int,
+    page_size: int,
+    products: list[Product],
+) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    for i, p in enumerate(products, start=1):
+        label = product_button_label(i, p.name, p.price)
+        b.add(InlineKeyboardButton(text=label, callback_data=f"vw:{p.id}:s:{page}"))
+    b.adjust(1)
+    pages = max(1, (total + page_size - 1) // page_size)
+    nav: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"sp:{page-1}"))
+    nav.append(InlineKeyboardButton(text=f"{page+1}/{pages}", callback_data="ig:n"))
+    if page < pages - 1:
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"sp:{page+1}"))
+    if nav and total > 0:
+        b.row(*nav)
+    b.row(InlineKeyboardButton(text="⬅️ К категориям", callback_data="ct:l"))
     return b.as_markup()
 
 

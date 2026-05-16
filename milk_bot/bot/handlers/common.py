@@ -13,6 +13,12 @@ from milk_bot.bot.utils.fsm import (
 router = Router()
 
 
+def is_search_state(state_str: str | None) -> bool:
+    if not state_str:
+        return False
+    return state_str.startswith("SearchStates:")
+
+
 @router.callback_query(F.data == "ig:n")
 async def cb_ignore(cq: CallbackQuery) -> None:
     await cq.answer()
@@ -28,24 +34,39 @@ async def cmd_cancel_global(message: Message, state: FSMContext) -> None:
         notice = "Оформление заказа отменено."
     elif is_admin_fsm_state(current):
         notice = "Действие в админ-панели отменено."
+    elif is_search_state(current):
+        notice = "Поиск отменён."
     else:
         notice = "Действие отменено."
     await clear_fsm_with_menu(message, state, notice=notice)
 
 
-async def block_if_busy_fsm(message: Message, state: FSMContext) -> bool:
-    """True — можно обрабатывать пункт меню."""
+async def _reply_busy(event: Message | CallbackQuery, text: str) -> None:
+    if isinstance(event, CallbackQuery):
+        await event.answer(text, show_alert=True)
+    else:
+        await event.answer(text, reply_markup=main_menu_keyboard())
+
+
+async def block_if_busy_fsm(event: Message | CallbackQuery, state: FSMContext) -> bool:
+    """True — можно обрабатывать действие."""
     current = await state.get_state()
     if is_checkout_state(current):
-        await message.answer(
+        await _reply_busy(
+            event,
             "Сейчас идёт оформление заказа. Завершите его или отмените: /cancel",
-            reply_markup=main_menu_keyboard(),
         )
         return False
     if is_admin_fsm_state(current):
-        await message.answer(
+        await _reply_busy(
+            event,
             "Сначала завершите действие в админке или нажмите /cancel",
-            reply_markup=main_menu_keyboard(),
+        )
+        return False
+    if current and current.startswith("ProductQtyStates:"):
+        await _reply_busy(
+            event,
+            "Сначала завершите выбор товара (назад) или отмените: /cancel",
         )
         return False
     return True
