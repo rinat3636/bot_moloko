@@ -24,6 +24,7 @@ from milk_bot.bot.utils.catalog_labels import (
 )
 from milk_bot.bot.utils.catalog_ui import show_product_card
 from milk_bot.bot.utils.formatters import format_money
+from milk_bot.bot.utils.menu_keyboard import pin_main_menu
 from milk_bot.bot.utils.product_display import format_product_card_caption
 
 router = Router()
@@ -115,6 +116,7 @@ async def open_catalog(message: Message, session: AsyncSession, state: FSMContex
     if not await block_if_busy_fsm(message, state):
         return
     await state.clear()
+    await pin_main_menu(message)
     await _render_categories(message, session, edit=False)
 
 
@@ -123,6 +125,7 @@ async def open_search(message: Message, session: AsyncSession, state: FSMContext
     if not await block_if_busy_fsm(message, state):
         return
     await state.clear()
+    await pin_main_menu(message)
     await _prompt_search(message, state)
 
 
@@ -132,6 +135,7 @@ async def cb_search_ask(cq: CallbackQuery, session: AsyncSession, state: FSMCont
         return
     await cq.answer()
     await state.clear()
+    await pin_main_menu(cq.message)
     await _prompt_search(cq.message, state)
 
 

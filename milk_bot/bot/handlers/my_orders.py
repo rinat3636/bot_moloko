@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from milk_bot.bot.handlers.common import block_if_busy_fsm
 from milk_bot.bot.services import notifier as notifier_service
 from milk_bot.bot.services import order as order_service
+from milk_bot.bot.utils.menu_keyboard import pin_main_menu
 
 router = Router()
 
@@ -17,6 +18,7 @@ router = Router()
 async def my_orders(message: Message, session: AsyncSession, state: FSMContext) -> None:
     if not await block_if_busy_fsm(message, state):
         return
+    await pin_main_menu(message)
     uid = message.from_user.id
     orders = await order_service.list_user_orders(session, uid, limit=10)
     if not orders:

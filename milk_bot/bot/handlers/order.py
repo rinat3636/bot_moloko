@@ -80,7 +80,7 @@ async def cb_cancel_inline(cq: CallbackQuery, state: FSMContext) -> None:
     await cq.answer()
     await state.clear()
     await cq.message.edit_text("Оформление отменено.")
-    await answer_with_main_menu(cq.message, "Меню внизу обновлено.")
+    await answer_with_main_menu(cq.message, "Оформление отменено.")
 
 
 @router.message(OrderCheckoutStates.waiting_contacts, F.text)
@@ -247,8 +247,5 @@ async def step_confirm_ok(
     if order.total == 0:
         text += "\n\nСумма уточняется — цены в каталоге обновляются."
     await cq.message.edit_text(text)
-    await answer_with_main_menu(
-        cq.message,
-        "Меню внизу обновлено — можно продолжить покупки.",
-    )
+    await answer_with_main_menu(cq.message, "Заказ оформлен. Меню внизу обновлено.")
     await notifier_service.notify_new_order(bot, order)

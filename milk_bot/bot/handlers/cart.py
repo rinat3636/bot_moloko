@@ -13,6 +13,7 @@ from milk_bot.bot.keyboards.inline import cart_keyboard
 from milk_bot.bot.services import catalog as catalog_service
 from milk_bot.bot.services import cart as cart_service
 from milk_bot.bot.utils.formatters import format_money
+from milk_bot.bot.utils.menu_keyboard import pin_main_menu
 
 router = Router()
 
@@ -68,6 +69,7 @@ async def open_cart(message: Message, session: AsyncSession, state: FSMContext) 
     if not await block_if_busy_fsm(message, state):
         return
     await state.clear()
+    await pin_main_menu(message)
     await _show_cart(message, session, message.from_user.id, edit=False)
 
 

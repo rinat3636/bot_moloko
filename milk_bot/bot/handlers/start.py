@@ -6,6 +6,7 @@ from aiogram.types import Message
 from milk_bot.bot.config import get_settings, is_admin
 from milk_bot.bot.keyboards.inline import admin_main_keyboard
 from milk_bot.bot.utils.formatters import format_money
+from milk_bot.bot.keyboards.reply import main_menu_keyboard
 from milk_bot.bot.utils.menu_keyboard import answer_with_main_menu
 
 router = Router()
@@ -67,7 +68,11 @@ async def about_delivery(message: Message, state: FSMContext) -> None:
             ]
         )
     lines.extend(["", "Вопросы по заказу — напишите нам после оформления, мы на связи."])
-    await message.answer("\n".join(lines), parse_mode="HTML")
+    await message.answer(
+        "\n".join(lines),
+        parse_mode="HTML",
+        reply_markup=main_menu_keyboard(),
+    )
 
 
 @router.message(F.text == "📞 Контакты")
@@ -82,4 +87,5 @@ async def contacts(message: Message, state: FSMContext) -> None:
         "мы ответим по статусу доставки и составу заказа.\n\n"
         "Срочные вопросы — через управляющую компанию вашего дома.",
         parse_mode="HTML",
+        reply_markup=main_menu_keyboard(),
     )
