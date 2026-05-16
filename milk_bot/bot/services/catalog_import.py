@@ -191,6 +191,21 @@ def sync_url() -> str:
     return u
 
 
+def _apply_photo_from_site(product: Product, photo_url: str | None) -> None:
+    """Обновить фото с сайта, не затирая уже закешированный Telegram file_id."""
+    if not photo_url:
+        return
+    current = (product.photo_file_id or "").strip()
+    if not current:
+        product.photo_file_id = photo_url
+        return
+    if current.startswith(("http://", "https://")):
+        if current != photo_url:
+            product.photo_file_id = photo_url
+        return
+    # Уже Telegram file_id — не трогаем при ежедневном импорте
+
+
 def upsert_category(session: Session, name: str) -> Category:
     row = session.scalars(select(Category).where(Category.name == name)).first()
     if row:
@@ -219,8 +234,7 @@ def import_products(
                 if existing:
                     existing.name = raw["name"]
                     existing.description = raw.get("description")
-                    if photo:
-                        existing.photo_file_id = photo
+                    _apply_photo_from_site(existing, photo)
                     existing.category_id = cat.id
                     existing.is_active = True
                     updated += 1

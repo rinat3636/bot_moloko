@@ -75,6 +75,19 @@ async def remove_line_by_id(session: AsyncSession, line_id: int, user_id: int) -
     return True
 
 
+async def remove_inactive_lines(session: AsyncSession, user_id: int) -> int:
+    from milk_bot.bot.services.catalog import cart_lines
+
+    removed = 0
+    for li in await cart_lines(session, user_id):
+        if li.product is not None and not li.product.is_active:
+            await session.delete(li)
+            removed += 1
+    if removed:
+        await session.flush()
+    return removed
+
+
 async def clear_cart(session: AsyncSession, user_id: int) -> None:
     res = await session.execute(select(CartItem).where(CartItem.user_id == user_id))
     for row in res.scalars().all():

@@ -53,11 +53,13 @@ async def create_order_from_cart(
     comment: str | None = None,
 ) -> tuple[Order, list[str]]:
     settings = get_settings()
-    snapshots, skipped = await _cart_snapshots(session, user_id)
+    snapshots, skipped = await get_cart_checkout_summary(session, user_id)
     total = Decimal("0")
     for p, qty in snapshots:
         total += p.price * qty
     total = total.quantize(Decimal("0.01"))
+    if total <= 0:
+        raise ValueError("zero_total")
     if total < Decimal(str(settings.min_order_amount)):
         raise ValueError("min_amount")
 

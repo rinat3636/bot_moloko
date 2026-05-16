@@ -26,7 +26,7 @@ PAGE_SIZE = 7
 
 
 async def _render_categories(message: Message, session: AsyncSession, *, edit: bool = False) -> None:
-    cats = await catalog_service.list_categories(session)
+    cats = await catalog_service.list_categories(session, active_only=True)
     if not cats:
         text = "Каталог пока пуст. Администратор скоро добавит товары."
         if edit and message.text is not None:
@@ -76,22 +76,30 @@ async def open_catalog(message: Message, session: AsyncSession, state: FSMContex
 
 
 @router.callback_query(F.data == "ct:l")
-async def cb_cat_list(cq: CallbackQuery, session: AsyncSession) -> None:
+async def cb_cat_list(cq: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
+    if not await block_if_busy_fsm(cq, state):
+        return
+    await state.clear()
     await cq.answer()
     await _render_categories(cq.message, session, edit=True)
 
 
 @router.callback_query(F.data.startswith("ct:"))
-async def cb_cat_open(cq: CallbackQuery, session: AsyncSession) -> None:
+async def cb_cat_open(cq: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
     if cq.data == "ct:l":
         return
+    if not await block_if_busy_fsm(cq, state):
+        return
+    await state.clear()
     await cq.answer()
     cid = int(cq.data.split(":")[1])
     await _render_products_list(cq.message, session, cid, 0)
 
 
 @router.callback_query(F.data.startswith("pg:"))
-async def cb_page(cq: CallbackQuery, session: AsyncSession) -> None:
+async def cb_page(cq: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
+    if not await block_if_busy_fsm(cq, state):
+        return
     await cq.answer()
     _, cid_s, page_s = cq.data.split(":")
     await _render_products_list(cq.message, session, int(cid_s), int(page_s))
@@ -99,6 +107,8 @@ async def cb_page(cq: CallbackQuery, session: AsyncSession) -> None:
 
 @router.callback_query(F.data.startswith("vw:"))
 async def cb_view_product(cq: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
+    if not await block_if_busy_fsm(cq, state):
+        return
     parts = cq.data.split(":")
     pid = int(parts[1])
     cid = int(parts[2]) if len(parts) > 2 else 0

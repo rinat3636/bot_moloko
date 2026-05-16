@@ -13,12 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from milk_bot.bot.db.models import User
 from milk_bot.bot.filters.admin import AdminFilter
 from milk_bot.bot.states.admin import AdminBroadcastStates
+from milk_bot.bot.utils.fsm import clear_state_if_set
 
 router = Router()
 
 
 @router.callback_query(F.data == "ad:bc", AdminFilter())
 async def broadcast_start(cq: CallbackQuery, state: FSMContext) -> None:
+    await clear_state_if_set(state)
     await cq.answer()
     await state.set_state(AdminBroadcastStates.waiting_body)
     await cq.message.edit_text(

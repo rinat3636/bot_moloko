@@ -9,9 +9,20 @@ from sqlalchemy.orm import selectinload
 from milk_bot.bot.db.models import CartItem, Category, Product
 
 
-async def list_categories(session: AsyncSession) -> list[Category]:
+async def list_categories(session: AsyncSession, *, active_only: bool = False) -> list[Category]:
+    if not active_only:
+        res = await session.execute(
+            select(Category).order_by(Category.sort_order, Category.name)
+        )
+        return list(res.scalars().all())
     res = await session.execute(
-        select(Category).order_by(Category.sort_order, Category.name)
+        select(Category)
+        .where(
+            select(Product.id)
+            .where(Product.category_id == Category.id, Product.is_active.is_(True))
+            .exists()
+        )
+        .order_by(Category.sort_order, Category.name)
     )
     return list(res.scalars().all())
 

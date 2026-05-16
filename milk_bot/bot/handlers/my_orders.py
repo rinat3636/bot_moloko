@@ -35,7 +35,9 @@ async def my_orders(message: Message, session: AsyncSession, state: FSMContext) 
 
 
 @router.callback_query(F.data.startswith("mo:"))
-async def order_detail(cq: CallbackQuery, session: AsyncSession) -> None:
+async def order_detail(cq: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
+    if not await block_if_busy_fsm(cq, state):
+        return
     oid = int(cq.data.split(":")[1])
     o = await order_service.get_order(session, oid)
     if not o or o.user_id != cq.from_user.id:
@@ -66,7 +68,11 @@ async def order_detail(cq: CallbackQuery, session: AsyncSession) -> None:
 
 
 @router.callback_query(F.data.startswith("mc:"))
-async def cancel_my(cq: CallbackQuery, session: AsyncSession, bot: Bot) -> None:
+async def cancel_my(
+    cq: CallbackQuery, session: AsyncSession, bot: Bot, state: FSMContext
+) -> None:
+    if not await block_if_busy_fsm(cq, state):
+        return
     oid = int(cq.data.split(":")[1])
     o = await order_service.get_order(session, oid)
     if not o or o.user_id != cq.from_user.id:

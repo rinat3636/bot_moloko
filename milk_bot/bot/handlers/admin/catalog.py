@@ -14,6 +14,7 @@ from milk_bot.bot.filters.admin import AdminFilter
 from milk_bot.bot.services import catalog as catalog_service
 from milk_bot.bot.states.admin import AdminProductStates
 from milk_bot.bot.utils.formatters import format_money
+from milk_bot.bot.utils.fsm import clear_state_if_set
 
 router = Router()
 
@@ -36,13 +37,19 @@ async def _catalog_home(message: Message, session: AsyncSession) -> None:
 
 
 @router.callback_query(F.data == "ad:ct", AdminFilter())
-async def admin_catalog_home(cq: CallbackQuery, session: AsyncSession) -> None:
+async def admin_catalog_home(
+    cq: CallbackQuery, session: AsyncSession, state: FSMContext
+) -> None:
+    await clear_state_if_set(state)
     await cq.answer()
     await _catalog_home(cq.message, session)
 
 
 @router.callback_query(F.data.startswith("ac:cg:"), AdminFilter())
-async def admin_category_products(cq: CallbackQuery, session: AsyncSession) -> None:
+async def admin_category_products(
+    cq: CallbackQuery, session: AsyncSession, state: FSMContext
+) -> None:
+    await clear_state_if_set(state)
     await cq.answer()
     cid = int(cq.data.split(":")[2])
     await _render_category_products(cq.message, session, cid)
@@ -76,7 +83,10 @@ async def _render_category_products(message: Message, session: AsyncSession, cid
 
 
 @router.callback_query(F.data.startswith("ac:pe:"), AdminFilter())
-async def admin_prod_edit(cq: CallbackQuery, session: AsyncSession) -> None:
+async def admin_prod_edit(
+    cq: CallbackQuery, session: AsyncSession, state: FSMContext
+) -> None:
+    await clear_state_if_set(state)
     await cq.answer()
     pid = int(cq.data.split(":")[2])
     await _render_product_editor(cq.message, session, pid)
@@ -85,6 +95,7 @@ async def admin_prod_edit(cq: CallbackQuery, session: AsyncSession) -> None:
 async def _render_product_editor(message: Message, session: AsyncSession, pid: int) -> None:
     p = await session.get(Product, pid)
     if not p:
+        await message.edit_text("Товар не найден.")
         return
     desc = (p.description or "—")[:180]
     b = InlineKeyboardBuilder()

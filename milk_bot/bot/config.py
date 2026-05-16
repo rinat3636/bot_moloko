@@ -66,7 +66,11 @@ class Settings(BaseSettings):
     def orders_chat_id_int(self) -> int | None:
         if not self.orders_chat_id or not str(self.orders_chat_id).strip():
             return None
-        return int(str(self.orders_chat_id).strip())
+        try:
+            return int(str(self.orders_chat_id).strip())
+        except ValueError:
+            logger.warning("ORDERS_CHAT_ID is not a valid integer: {!r}", self.orders_chat_id)
+            return None
 
 
 def parse_admin_ids(raw: str) -> List[int]:

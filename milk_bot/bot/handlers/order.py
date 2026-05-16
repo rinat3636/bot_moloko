@@ -48,6 +48,11 @@ async def start_order_fsm_from_cart(
                 "В корзине только недоступные товары. Обновите корзину.",
                 show_alert=True,
             )
+        elif code == "zero_total":
+            await cq.answer(
+                "У товаров в корзине цена 0 ₽. Администратор выставит цены в разделе «Цены».",
+                show_alert=True,
+            )
         else:
             await cq.answer("Корзина пуста", show_alert=True)
         return
@@ -225,6 +230,11 @@ async def step_confirm_ok(
             )
         elif code == "inactive_only":
             await cq.answer("В корзине нет доступных товаров", show_alert=True)
+        elif code == "zero_total":
+            await cq.answer(
+                "Сумма заказа 0 ₽. Выставьте цены в админке (💰 Цены).",
+                show_alert=True,
+            )
         else:
             await cq.answer("Не удалось оформить заказ", show_alert=True)
         return
