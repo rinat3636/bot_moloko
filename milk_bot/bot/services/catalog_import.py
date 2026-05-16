@@ -1,164 +1,25 @@
 from __future__ import annotations
 
-import asyncio
 import os
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Iterable
-from urllib.parse import urljoin, urlparse
 
 import httpx
 from loguru import logger
-from selectolax.parser import HTMLParser, Node
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from milk_bot.bot.config import get_settings
 from milk_bot.bot.db.models import Category, Product
-
-BASE = "https://n-i.ru"
-
-# Страницы-витрины с карточками товаров (div.blog div.item)
-CATEGORY_PAGES: dict[str, str] = {
-    "moloko": "Молоко",
-    "kefir": "Кефир",
-    "tvorog": "Творог",
-    "smetana": "Сметана",
-    "jogurt": "Йогурт",
-    "maslo-slivochnoe": "Масло сливочное",
-    "maslo-toplenoe": "Масло топлёное",
-    "syrki": "Сырки",
-    "smetanno-tvorozhnye": "Сметанно-творожные",
-    "tvorozhki": "Творожки",
-    "slivki": "Сливки",
-    "ryazhenka": "Ряженка",
-    "prostokvasha": "Простокваша",
-}
-
-def discover_category_pages(html: str) -> list[tuple[str, str]]:
-    """Ссылки на витрины вида /moloko.html, /kefir.html с главной каталога."""
-    tree = HTMLParser(html)
-    found: list[tuple[str, str]] = []
-    seen: set[str] = set()
-    for a in tree.css(".item-title a, h2.item-title a"):
-        href = a.attributes.get("href", "")
-        if not href:
-            continue
-        full = _abs_url(href)
-        path = urlparse(full).path.lower()
-        if not path.endswith(".html"):
-            continue
-        slug = path.rsplit("/", 1)[-1].removesuffix(".html")
-        if slug in CATEGORY_PAGES and full not in seen:
-            seen.add(full)
-            found.append((full, CATEGORY_PAGES[slug]))
-    return found
-
-
-def build_seed_pages() -> list[tuple[str, str]]:
-    return [
-        (f"{BASE}/katalog-produktsii/sobstvennaya-produktsiya.html", "Каталог"),
-        (f"{BASE}/katalog-produktsii/chuzhaya.html", "Доп. ассортимент"),
-    ]
-
-
-SEED_PAGES: list[tuple[str, str]] = build_seed_pages()
-
-
-def _abs_url(href: str) -> str:
-    return urljoin(BASE + "/", href)
-
-
-def _text(node: Node | None) -> str:
-    if node is None:
-        return ""
-    return " ".join(node.text().split()).strip()
-
-
-def _first_img_src(block: Node) -> str | None:
-    img = block.css_first("img")
-    if img is None:
-        return None
-    src = img.attributes.get("src")
-    if not src:
-        return None
-    return _abs_url(src)
-
-
-def parse_products_from_page(html: str, default_category: str) -> list[dict]:
-    tree = HTMLParser(html)
-    out: list[dict] = []
-    for item in tree.css("div.blog div.item"):
-        title_a = item.css_first("h2.item-title a") or item.css_first(".item-title a")
-        if title_a is None:
-            continue
-        name = _text(title_a)
-        if not name:
-            continue
-        href = title_a.attributes.get("href", "")
-        source_url = _abs_url(href) if href else None
-        desc_parts: list[str] = []
-        for p in item.css(".content-wrapper p"):
-            t = _text(p)
-            if t and not t.lower().startswith("подробнее"):
-                desc_parts.append(t)
-        description = "\n".join(desc_parts) if desc_parts else None
-        photo = _first_img_src(item)
-        out.append(
-            {
-                "name": name,
-                "description": description,
-                "photo_url": photo,
-                "source_url": source_url,
-                "category_hint": default_category,
-            }
-        )
-    return out
-
-
-def category_from_url(url: str, fallback: str) -> str:
-    path = urlparse(url).path.lower().strip("/")
-    if path.endswith(".html"):
-        slug = path.rsplit("/", 1)[-1].removesuffix(".html")
-        if slug in CATEGORY_PAGES:
-            return CATEGORY_PAGES[slug]
-    for slug, name in CATEGORY_PAGES.items():
-        if f"/{slug}/" in path or path.startswith(f"{slug}/"):
-            return name
-    low = url.lower()
-    if "chuzhaya" in low:
-        return "Доп. ассортимент"
-    if "katalog-produktsii" in low:
-        return fallback or "Каталог"
-    return fallback or "Прочее"
-
-
-def discover_more_pages(html: str, limit: int = 80) -> list[str]:
-    tree = HTMLParser(html)
-    urls: list[str] = []
-    for a in tree.css("a"):
-        href = a.attributes.get("href", "")
-        if not href or href.startswith("#"):
-            continue
-        full = _abs_url(href)
-        if urlparse(full).netloc and "n-i.ru" not in urlparse(full).netloc:
-            continue
-        path = urlparse(full).path.lower()
-        if not full.endswith(".html"):
-            continue
-        allowed = (
-            any(f"/{slug}" in path or path.endswith(f"{slug}.html") for slug in CATEGORY_PAGES)
-            or "/moloko/" in path
-            or "/katalog-produktsii/" in path
-        )
-        if not allowed:
-            continue
-        if full not in urls:
-            urls.append(full)
-        if len(urls) >= limit:
-            break
-    return urls
-
+from milk_bot.bot.services.n_i_catalog import (
+    SEED_PAGES,
+    category_from_url,
+    discover_category_pages,
+    discover_more_pages,
+    fetch,
+    parse_products_from_page,
+)
 
 def dedupe_products(items: list[dict]) -> list[dict]:
     by_url: dict[str, dict] = {}
@@ -175,12 +36,6 @@ def dedupe_products(items: list[dict]) -> list[dict]:
         if not prev.get("description") and raw.get("description"):
             prev["description"] = raw["description"]
     return list(by_url.values())
-
-
-async def fetch(client: httpx.AsyncClient, url: str) -> str:
-    r = await client.get(url, timeout=30.0)
-    r.raise_for_status()
-    return r.text
 
 
 def sync_url() -> str:
@@ -203,7 +58,6 @@ def _apply_photo_from_site(product: Product, photo_url: str | None) -> None:
         if current != photo_url:
             product.photo_file_id = photo_url
         return
-    # Уже Telegram file_id — не трогаем при ежедневном импорте
 
 
 def upsert_category(session: Session, name: str) -> Category:
@@ -302,16 +156,16 @@ async def run_catalog_import(*, if_empty: bool = False) -> ImportResult | None:
     queued_urls: set[str] = set()
     async with httpx.AsyncClient(headers={"User-Agent": "milk-bot-import/1.0"}) as client:
         queue = list(SEED_PAGES)
-        try:
-            index_html = await fetch(
-                client, f"{BASE}/katalog-produktsii/sobstvennaya-produktsiya.html"
-            )
-            for url, cat in discover_category_pages(index_html):
+        for seed_url, _seed_cat in SEED_PAGES:
+            try:
+                seed_html = await fetch(client, seed_url)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Seed page fetch failed {}: {}", seed_url, exc)
+                continue
+            for url, cat in discover_category_pages(seed_html):
                 if url not in queued_urls:
                     queue.append((url, cat))
                     queued_urls.add(url)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Category index fetch failed: {}", exc)
         for url, _ in queue:
             queued_urls.add(url)
         while queue and len(seen_pages) < MAX_PAGES:

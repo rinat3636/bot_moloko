@@ -29,8 +29,8 @@ async def _catalog_home(message: Message, session: AsyncSession) -> None:
     await message.edit_text(
         "💰 <b>Цены</b>\n\n"
         "Названия, фото и описания подтягиваются с сайта n-i.ru "
-        "(обновление раз в сутки).\n"
-        "Здесь можно менять только <b>цены</b>.",
+        "(обновление раз в сутки). На сайте <b>цен нет</b>.\n"
+        "Здесь вы задаёте <b>цены</b> для бота.",
         reply_markup=b.as_markup(),
         parse_mode="HTML",
     )
