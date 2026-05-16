@@ -17,7 +17,6 @@ from milk_bot.bot.keyboards.inline import (
     delivery_slots_keyboard,
     payment_keyboard,
 )
-from milk_bot.bot.keyboards.reply import phone_request_keyboard, remove_keyboard
 from milk_bot.bot.services import catalog as catalog_service
 from milk_bot.bot.services import notifier as notifier_service
 from milk_bot.bot.services import order as order_service
@@ -25,7 +24,7 @@ from milk_bot.bot.services import payment_yookassa
 from milk_bot.bot.states.order import OrderCheckoutStates
 from milk_bot.bot.utils.formatters import format_money
 from milk_bot.bot.utils.order_checkout import is_allowed_delivery_date, is_allowed_delivery_slot
-from milk_bot.bot.utils.validators import normalize_phone, validate_address, validate_full_name
+from milk_bot.bot.utils.validators import parse_checkout_contacts
 
 router = Router()
 
@@ -54,9 +53,17 @@ async def start_order_fsm_from_cart(
         return
     await state.clear()
     await cq.answer()
-    await state.set_state(OrderCheckoutStates.waiting_name)
+    await state.set_state(OrderCheckoutStates.waiting_contacts)
     await cq.message.edit_text(
-        "Оформление заказа.\nВведите <b>ФИО</b> (минимум два слова, без цифр).\n\n"
+        "<b>Оформление заказа</b>\n\n"
+        "Отправьте <b>одним сообщением</b> три строки:\n"
+        "1) имя\n"
+        "2) телефон\n"
+        "3) адрес доставки\n\n"
+        "Пример:\n"
+        "<code>Ринат\n"
+        "89001234567\n"
+        "ул. Пример, д. 1, кв. 15</code>\n\n"
         "Отмена: /cancel",
         parse_mode="HTML",
     )
@@ -69,64 +76,13 @@ async def cb_cancel_inline(cq: CallbackQuery, state: FSMContext) -> None:
     await cq.message.edit_text("Оформление отменено.")
 
 
-@router.message(OrderCheckoutStates.waiting_name, F.text)
-async def step_name(message: Message, state: FSMContext) -> None:
-    ok, val = validate_full_name(message.text or "")
-    if not ok:
-        await message.answer(val)
+@router.message(OrderCheckoutStates.waiting_contacts, F.text)
+async def step_contacts(message: Message, state: FSMContext) -> None:
+    ok, err, data = parse_checkout_contacts(message.text or "")
+    if not ok or data is None:
+        await message.answer(err)
         return
-    await state.update_data(full_name=val)
-    await state.set_state(OrderCheckoutStates.waiting_phone)
-    await message.answer(
-        "Укажите телефон: нажмите кнопку ниже или введите вручную в формате +7…\n\n"
-        "Отмена: /cancel",
-        reply_markup=phone_request_keyboard(),
-    )
-
-
-@router.message(OrderCheckoutStates.waiting_phone, F.contact)
-async def step_phone_contact(message: Message, state: FSMContext) -> None:
-    contact = message.contact
-    if not contact:
-        await message.answer("Отправьте контакт через кнопку.")
-        return
-    if contact.user_id is not None and contact.user_id != message.from_user.id:
-        await message.answer("Нужен ваш номер — нажмите «Отправить номер».")
-        return
-    raw = contact.phone_number or ""
-    ok, phone = normalize_phone(raw)
-    if not ok:
-        await message.answer("Не удалось распознать номер. Введите вручную +7XXXXXXXXXX.")
-        return
-    await state.update_data(phone=phone)
-    await state.set_state(OrderCheckoutStates.waiting_address)
-    await message.answer(
-        "Введите адрес доставки (от 10 символов).\n\nОтмена: /cancel",
-        reply_markup=remove_keyboard(),
-    )
-
-
-@router.message(OrderCheckoutStates.waiting_phone, F.text)
-async def step_phone_text(message: Message, state: FSMContext) -> None:
-    ok, phone = normalize_phone(message.text or "")
-    if not ok:
-        await message.answer("Неверный формат. Нужно +7XXXXXXXXXX или 8XXXXXXXXXX.")
-        return
-    await state.update_data(phone=phone)
-    await state.set_state(OrderCheckoutStates.waiting_address)
-    await message.answer(
-        "Введите адрес доставки (от 10 символов).\n\nОтмена: /cancel",
-        reply_markup=remove_keyboard(),
-    )
-
-
-@router.message(OrderCheckoutStates.waiting_address, F.text)
-async def step_address(message: Message, state: FSMContext) -> None:
-    ok, val = validate_address(message.text or "")
-    if not ok:
-        await message.answer(val)
-        return
-    await state.update_data(address=val)
+    await state.update_data(**data)
     await state.set_state(OrderCheckoutStates.waiting_date)
     settings = get_settings()
     today = datetime.now(ZoneInfo(settings.timezone)).date()
